@@ -29,7 +29,7 @@
     <br>
     <!-- Dynamic Header -->
     <div style="text-align:center" id="site-header"></div>
-    <div style="text-align:center" id="site-message"></div>
+    <div style="text-align:center">{{ site_config.get("site", {}).get("message", "")|safe }}</div>
 
     <!-- Dynamic Menu -->
     <div style="text-align:center" id="site-menu"></div>
@@ -68,8 +68,11 @@
     {% block body %}{% endblock %}
 
     <br>
-    <div style="text-align:center" id="footer" data-translate-lang="footer"></div>
-    <div style="text-align:center"><div><small id="site-version">ver. unknown</small></div></div>
+    <div style="text-align:center" id="footer">
+		<p>{{ site_config.get("site", {}).get("footer", "")|safe }}</p>
+        <p>Powered by <strong><a href="https://github.com/pablorevilla-meshtastic/meshview">Meshview</a></strong>
+        <small>ver. {{ SOFTWARE_RELEASE | default("unknown") }}</small></p>
+    </div>
     <br>
 
     <!-- Language Loader -->
