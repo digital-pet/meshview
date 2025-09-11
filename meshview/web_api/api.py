@@ -535,6 +535,7 @@ async def api_config(request):
             "language": get_str(site, "language", "en"),
             "title": get_str(site, "title", ""),
             "message": get_str(site, "message", ""),
+            "footer": get_str(site, "footer", ""),
             "starting": get_str(site, "starting", "/chat"),
             "nodes": get_bool(site, "nodes", True),
             "chat": get_bool(site, "chat", True),
