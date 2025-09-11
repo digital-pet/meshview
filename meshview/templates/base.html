@@ -54,8 +54,9 @@
 {% block body %}{% endblock %}
 
 <br>
-<div style="text-align:center" id="footer" data-translate="footer"></div>
-<div style="text-align:center"><small id="site-version">ver. unknown</small></div>
+<div style="text-align:center" id="site-footer"></div>
+<!-- <div style="text-align:center" id="footer" data-translate="footer"></div> -->
+<div style="text-align:center"><small>Powered by Meshview </small><small id="site-version">ver. unknown</small></div>
 <br>
 
 <script>
@@ -161,7 +162,9 @@ async function initializePage() {
         document.getElementById("site-header").innerHTML =
             `<strong>${site.title || ""} ${site.domain ? "(" + site.domain + ")" : ""}</strong>`;
 
-        document.getElementById("site-message").textContent = site.message || "";
+        document.getElementById("site-message").innerHTML = site.message || "";
+		
+		document.getElementById("site-footer").innerHTML = site.footer || "";
 
         // Menu
         const menu = document.getElementById("site-menu");
