@@ -66,8 +66,9 @@
 
     <br>
     <div style="text-align:center">
-        Visit <strong><a href="https://github.com/pablorevilla-meshtastic/meshview">Meshview</a></strong> on Github.
-        <small>ver. {{ SOFTWARE_RELEASE | default("unknown") }}</small>
+		<p>{{ site_config.get("site", {}).get("footer", "") }}</p>
+        <p>Powered by <strong><a href="https://github.com/pablorevilla-meshtastic/meshview">Meshview</a></strong>
+        <small>ver. {{ SOFTWARE_RELEASE | default("unknown") }}</small></p>
     </div>
     <br>
 </body>
