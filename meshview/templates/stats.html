@@ -85,6 +85,15 @@
     border:none;
     border-radius:4px;
 }
+
+.chart-filter {
+    margin-bottom: 8px;
+    padding: 4px 6px;
+    background: #444;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+}
 {% endblock %}
 
 {% block head %}
@@ -118,15 +127,38 @@
         </div>
     </div>
 
-    <!-- Daily Charts -->
     <div class="card-section">
-        <p class="section-header" data-translate-lang="packets_per_day_all">
-            Packets per Day - All Ports (Last 14 Days)
+        <p class="section-header" data-translate-lang="daily_snapshot_packets_history">
+            Daily Packet Snapshot History
         </p>
-        <div id="total_daily_all" class="total-count">Total: 0</div>
-        <button class="expand-btn" data-chart="chart_daily_all" data-translate-lang="expand_chart">Expand Chart</button>
-        <button class="export-btn" data-chart="chart_daily_all" data-translate-lang="export_csv">Export CSV</button>
-        <div id="chart_daily_all" class="chart"></div>
+        <select id="snapshotPacketsRange" class="chart-filter" aria-label="Snapshot packet timeframe">
+            <option value="7">7 days</option>
+            <option value="14">14 days</option>
+            <option value="30">1 month</option>
+            <option value="183">6 months</option>
+            <option value="365">1 year</option>
+            <option value="all" selected>All</option>
+        </select>
+        <button class="expand-btn" data-chart="chart_daily_snapshot_packets" data-translate-lang="expand_chart">Expand Chart</button>
+        <button class="export-btn" data-chart="chart_daily_snapshot_packets" data-translate-lang="export_csv">Export CSV</button>
+        <div id="chart_daily_snapshot_packets" class="chart"></div>
+    </div>
+
+    <div class="card-section">
+        <p class="section-header" data-translate-lang="daily_snapshot_nodes_gateways_history">
+            Daily Node/Gateway Snapshot History
+        </p>
+        <select id="snapshotNodesGatewaysRange" class="chart-filter" aria-label="Snapshot node and gateway timeframe">
+            <option value="7">7 days</option>
+            <option value="14">14 days</option>
+            <option value="30">1 month</option>
+            <option value="183">6 months</option>
+            <option value="365">1 year</option>
+            <option value="all" selected>All</option>
+        </select>
+        <button class="expand-btn" data-chart="chart_daily_snapshot_nodes_gateways" data-translate-lang="expand_chart">Expand Chart</button>
+        <button class="export-btn" data-chart="chart_daily_snapshot_nodes_gateways" data-translate-lang="export_csv">Export CSV</button>
+        <div id="chart_daily_snapshot_nodes_gateways" class="chart"></div>
     </div>
 
     <!-- Packet Types Pie Chart with Channel Selector -->
@@ -247,6 +279,15 @@ async function fetchStats(period_type,length,portnum=null,channel=null){
     }catch{return [];}
 }
 
+async function fetchDailySnapshots(){
+    try{
+        const res=await fetch("/api/snapshots/daily");
+        if(!res.ok) return [];
+        const json=await res.json();
+        return json.data||[];
+    }catch{return [];}
+}
+
 async function fetchNodes(){
     try{
         const res=await fetch("/api/nodes");
@@ -265,6 +306,18 @@ async function fetchChannels(){
     }catch{
         return [];
     }
+}
+
+function buildPacketTypeBreakdownFromSeries(allData, perPortSeries){
+    const totalAll = (allData || []).reduce((sum,d)=>sum+(d.count??d.packet_count??0),0);
+    const results = perPortSeries.map(({portnum, data}) => ({
+        portnum,
+        count: (data || []).reduce((sum,d)=>sum+(d.count??d.packet_count??0),0),
+    }));
+    const trackedTotal = results.reduce((sum,d)=>sum+d.count,0);
+    const other = Math.max(totalAll - trackedTotal,0);
+    if(other>0) results.push({portnum:"other", count:other});
+    return results;
 }
 
 function processCountField(nodes,field){
@@ -291,6 +344,22 @@ function prepareTopN(data,n=20){
         top.push({name:"Other", value:otherValue});
     }
     return top;
+}
+
+function filterSnapshotsByRange(data, rangeValue){
+    if(rangeValue === "all") return data;
+    const days = Number.parseInt(rangeValue, 10);
+    if(Number.isNaN(days) || days <= 0 || !data.length) return data;
+
+    const latest = data.reduce((maxDate, item) => {
+        const itemDate = new Date(`${item.date}T00:00:00Z`);
+        return itemDate > maxDate ? itemDate : maxDate;
+    }, new Date(`${data[0].date}T00:00:00Z`));
+
+    const cutoff = new Date(latest);
+    cutoff.setUTCDate(cutoff.getUTCDate() - (days - 1));
+
+    return data.filter(item => new Date(`${item.date}T00:00:00Z`) >= cutoff);
 }
 
 // --- Chart Rendering ---
@@ -365,6 +434,106 @@ function renderPieChart(elId,data,name){
     return chart;
 }
 
+function makeTelemetryLine(name, color, seriesData) {
+    return {
+        name,
+        type: "line",
+        smooth: true,
+        connectNulls: true,
+        showSymbol: true,
+        symbol: "circle",
+        symbolSize: 7,
+        lineStyle: {
+            width: 2,
+            color,
+            shadowColor: color.replace("1)", "0.35)"),
+            shadowBlur: 8,
+            shadowOffsetY: 3
+        },
+        itemStyle: {
+            color,
+            borderColor: "#000",
+            borderWidth: 1
+        },
+        areaStyle: {
+            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                { offset: 0, color: color.replace("1)", "0.5)") },
+                { offset: 0.6, color: color.replace("1)", "0.2)") },
+                { offset: 1, color: "rgba(0,0,0,0)" }
+            ])
+        },
+        data: seriesData
+    };
+}
+
+function renderDailySnapshotPacketsChart(domId,data){
+    const el=document.getElementById(domId);
+    if(!el) return;
+    const chart=echarts.getInstanceByDom(el) || echarts.init(el);
+    const labels=data.map(d=>d.date||"");
+    const packetCounts=data.map(d=>d.packet_count??0);
+
+    chart.setOption({
+        backgroundColor:'#272b2f',
+        tooltip:{trigger:'axis'},
+        legend:{
+            data:['Packets'],
+            textStyle:{color:'#ccc'}
+        },
+        grid:{left:'6%', right:'6%', bottom:'18%'},
+        xAxis:{
+            type:'category',
+            data:labels,
+            axisLine:{lineStyle:{color:'#aaa'}},
+            axisLabel:{rotate:45,color:'#ccc'}
+        },
+        yAxis:{
+            type:'value',
+            axisLine:{lineStyle:{color:'#aaa'}},
+            axisLabel:{color:'#ccc'}
+        },
+        series:[
+            makeTelemetryLine("Packets", "rgba(255,214,82,1)", packetCounts)
+        ]
+    });
+    return chart;
+}
+
+function renderDailySnapshotNodesGatewaysChart(domId,data){
+    const el=document.getElementById(domId);
+    if(!el) return;
+    const chart=echarts.getInstanceByDom(el) || echarts.init(el);
+    const labels=data.map(d=>d.date||"");
+    const nodeCounts=data.map(d=>d.node_count??0);
+    const gatewayCounts=data.map(d=>d.gateway_count??0);
+
+    chart.setOption({
+        backgroundColor:'#272b2f',
+        tooltip:{trigger:'axis'},
+        legend:{
+            data:['Nodes','Gateways'],
+            textStyle:{color:'#ccc'}
+        },
+        grid:{left:'6%', right:'6%', bottom:'18%'},
+        xAxis:{
+            type:'category',
+            data:labels,
+            axisLine:{lineStyle:{color:'#aaa'}},
+            axisLabel:{rotate:45,color:'#ccc'}
+        },
+        yAxis:{
+            type:'value',
+            axisLine:{lineStyle:{color:'#aaa'}},
+            axisLabel:{color:'#ccc'}
+        },
+        series:[
+            makeTelemetryLine("Nodes", "rgba(79,155,255,1)", nodeCounts),
+            makeTelemetryLine("Gateways", "rgba(138,255,108,1)", gatewayCounts)
+        ]
+    });
+    return chart;
+}
+
 
 // --- Packet Type Pie Chart ---
 async function fetchPacketTypeBreakdown(channel=null) {
@@ -388,9 +557,25 @@ async function fetchPacketTypeBreakdown(channel=null) {
 // --- Init ---
 let chartHourlyAll, chartPortnum1, chartPortnum3, chartPortnum4, chartPortnum67, chartPortnum70, chartPortnum71;
 let chartDailyAll, chartDailyPortnum1;
+let chartDailySnapshotPackets, chartDailySnapshotNodesGateways;
 let chartHwModel, chartRole, chartChannel;
 let chartGatewayChannel, chartGatewayRole, chartGatewayFirmware;
 let chartPacketTypes;
+let defaultPacketTypesData = [];
+let dailySnapshots = [];
+
+function renderSnapshotCharts(){
+    const packetsRange = document.getElementById("snapshotPacketsRange")?.value || "all";
+    const nodesGatewaysRange = document.getElementById("snapshotNodesGatewaysRange")?.value || "all";
+    chartDailySnapshotPackets = renderDailySnapshotPacketsChart(
+        "chart_daily_snapshot_packets",
+        filterSnapshotsByRange(dailySnapshots, packetsRange)
+    );
+    chartDailySnapshotNodesGateways = renderDailySnapshotNodesGatewaysChart(
+        "chart_daily_snapshot_nodes_gateways",
+        filterSnapshotsByRange(dailySnapshots, nodesGatewaysRange)
+    );
+}
 
 async function init(){
     // Channel selector
@@ -403,10 +588,9 @@ async function init(){
         select.appendChild(opt);
     });
 
-    // Daily all ports
-    const dailyAllData=await fetchStats('day',14);
-    updateTotalCount('total_daily_all',dailyAllData);
-    chartDailyAll=renderChart('chart_daily_all',dailyAllData,'line','#66bb6a');
+    // Daily snapshot histogram
+    dailySnapshots = await fetchDailySnapshots();
+    renderSnapshotCharts();
 
     // Daily port 1
     const dailyPort1Data=await fetchStats('day',14,1);
@@ -463,7 +647,9 @@ async function init(){
     }
 
     // Packet types pie
-    const packetTypesData = await fetchPacketTypeBreakdown();
+    const packetSeries = portnums.map((pn, i) => ({ portnum: pn, data: allData[i] }));
+    const packetTypesData = buildPacketTypeBreakdownFromSeries(hourlyAllData, packetSeries);
+    defaultPacketTypesData = packetTypesData;
     const formatted = packetTypesData
         .filter(d=>d.count>0)
         .map(d=>({
@@ -502,6 +688,8 @@ window.addEventListener('resize',()=>{
         chartPortnum67,
         chartPortnum70,
         chartPortnum71,
+        chartDailySnapshotPackets,
+        chartDailySnapshotNodesGateways,
         chartDailyAll,
         chartDailyPortnum1,
         chartHwModel,
@@ -554,10 +742,23 @@ document.querySelectorAll(".export-btn").forEach(btn=>{
         const option=chart.getOption();
         let rows=[];
         if(option.series[0].type==="bar"||option.series[0].type==="line"){
-            rows.push(["Period","Count"]);
             const xData=option.xAxis[0].data;
-            const yData=option.series[0].data;
-            for(let i=0;i<xData.length;i++) rows.push([xData[i],yData[i]]);
+            const series = option.series || [];
+            if(series.length > 1){
+                const headers = ["Period", ...series.map(s => s.name || "Series")];
+                rows.push(headers);
+                for(let i=0;i<xData.length;i++){
+                    const row=[xData[i]];
+                    series.forEach(s=>{
+                        row.push((s.data && s.data[i]!==undefined) ? s.data[i] : "");
+                    });
+                    rows.push(row);
+                }
+            }else{
+                rows.push(["Period","Count"]);
+                const yData=series[0].data;
+                for(let i=0;i<xData.length;i++) rows.push([xData[i],yData[i]]);
+            }
         }
         if(option.series[0].type==="pie"){
             rows.push(["Name","Value","Percentage"]);
@@ -573,7 +774,7 @@ document.querySelectorAll(".export-btn").forEach(btn=>{
 
 document.getElementById("channelSelect").addEventListener("change", async (e)=>{
     const channel = e.target.value;
-    const packetTypesData = await fetchPacketTypeBreakdown(channel);
+    const packetTypesData = channel ? await fetchPacketTypeBreakdown(channel) : defaultPacketTypesData;
     const formatted = packetTypesData
         .filter(d=>d.count>0)
         .map(d=>({
@@ -586,6 +787,9 @@ document.getElementById("channelSelect").addEventListener("change", async (e)=>{
     chartPacketTypes = renderPieChart("chart_packet_types",formatted,"Packet Types (Last 24h)");
 });
 
+document.getElementById("snapshotPacketsRange")?.addEventListener("change", renderSnapshotCharts);
+document.getElementById("snapshotNodesGatewaysRange")?.addEventListener("change", renderSnapshotCharts);
+
 // Kick everything off
 init();
 
@@ -593,10 +797,14 @@ init();
 async function loadConfigAndTranslations() {
     let langCode = "en";
     try {
-        const resConfig = await fetch("/api/config");
-        const cfg = await resConfig.json();
-        window.site_config = cfg;
-        langCode = cfg?.site?.language || "en";
+        if (window.site_config?.site) {
+            langCode = window.site_config.site.language || "en";
+        } else {
+            const resConfig = await fetch("/api/config");
+            const cfg = await resConfig.json();
+            window.site_config = cfg;
+            langCode = cfg?.site?.language || "en";
+        }
     } catch(err) {
         console.error("Failed to load /api/config:", err);
         window.site_config = { site: { language: "en" } };
