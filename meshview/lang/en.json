@@ -51,7 +51,9 @@
    "chat": {
      "chat_title": "Chats:",
         "replying_to": "Replying to:",
-        "view_packet_details": "View packet details"
+        "view_packet_details": "View packet details",
+        "channel": "Channel",
+        "all_channels": "All Channels"
    },
     "nodelist": {
         "search_placeholder": "Search by name or ID...",
@@ -127,6 +129,8 @@
       "total_gateways": "Total Gateways",
       "total_packets": "Total Packets",
       "total_packets_seen": "Total Packets Seen",
+      "daily_snapshot_packets_history": "Daily Packet Snapshot History",
+      "daily_snapshot_nodes_gateways_history": "Daily Node/Gateway Snapshot History",
       "packets_per_day_all": "Packets per Day - All Ports (Last 14 Days)",
       "packets_per_day_text": "Packets per Day - Text Messages (Port 1, Last 14 Days)",
       "packets_per_hour_all": "Packets per Hour - All Ports",
@@ -178,6 +182,8 @@
         "packet_id": "Packet ID",
         "from": "From",
         "to": "To",
+        "channel": "Channel",
+        "all_channels": "All Channels",
         "port": "Port",
         "links": "Links",
         "unknown_app": "UNKNOWN APP",
