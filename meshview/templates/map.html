@@ -235,6 +235,7 @@ function labelFor(key, fallback){
 function buildNodePopup(node){
     const labels = {
         channel: labelFor("channel_label", "Channel"),
+        nodeId: labelFor("node_id", "Node ID"),
         model: labelFor("model_label", "Model"),
         role: labelFor("role_label", "Role"),
         mqtt: labelFor("mqtt_gateway", "MQTT Gateway"),
@@ -243,13 +244,16 @@ function buildNodePopup(node){
         yes: mapTranslations.yes || "Yes",
         no: mapTranslations.no || "No"
     };
+    const displayName = node.long_name || node.short_name || `Node ${node.node_id}`;
+    const shortName = node.short_name ? ` (${escapeHtml(node.short_name)})` : "";
 
     return `
-        <b><a href="/node/${node.node_id}">${node.long_name}</a> (${node.short_name})</b><br>
+        <b><a href="/node/${node.node_id}">${escapeHtml(displayName)}</a>${shortName}</b><br>
 
-        <b>${labels.channel}</b> ${node.channel}<br>
-        <b>${labels.model}</b> ${node.hw_model}<br>
-        <b>${labels.role}</b> ${node.role}<br>
+        <b>${labels.nodeId}</b> ${node.node_id}<br>
+        <b>${labels.channel}</b> ${escapeHtml(node.channel || "N/A")}<br>
+        <b>${labels.model}</b> ${escapeHtml(node.hw_model || "N/A")}<br>
+        <b>${labels.role}</b> ${escapeHtml(node.role || "N/A")}<br>
         <b>${labels.mqtt}</b> ${node.is_mqtt_gateway ? labels.yes : labels.no}<br>
 
         ${
@@ -260,7 +264,7 @@ function buildNodePopup(node){
 
         ${
             node.firmware
-                ? `<b>${labels.firmware}</b> ${node.firmware}<br>`
+                ? `<b>${labels.firmware}</b> ${escapeHtml(node.firmware)}<br>`
                 : ""
         }
     `;
@@ -468,34 +472,18 @@ function renderNodesOnMap(){
         marker.nodeId = node.key;
         marker.originalColor = color;
         markerById[node.key] = marker;
+        marker.bindPopup(buildNodePopup(node), {
+            autoPan: true,
+            closeButton: true
+        });
 
-        const popup = `
-            <a href="/node/${node.node_id}">${node.long_name}</a> (${node.short_name})<br>
-
-            <span data-translate-lang="channel_label"></span> ${node.channel}<br>
-            <span data-translate-lang="model_label"></span> ${node.hw_model}<br>
-            <span data-translate-lang="role_label"></span> ${node.role}<br>
-            <span data-translate-lang="mqtt_gateway"></span> ${
-                node.is_mqtt_gateway ? (mapTranslations.yes || "Yes") : (mapTranslations.no || "No")
-            }<br>
-
-            ${
-                node.last_seen_us
-                    ? `<span data-translate-lang="last_seen"></span> ${timeAgoFromUs(node.last_seen_us)}<br>`
-                    : ""
+        marker.on('click', e => {
+            if(e.originalEvent){
+                L.DomEvent.stopPropagation(e.originalEvent);
             }
-
-            ${
-                node.firmware
-                    ? `<span data-translate-lang="firmware"></span> ${node.firmware}<br>`
-                    : ""
-            }
-        `;
-
-        marker.on('click', () => {
-            onNodeClick(node);
             marker.setPopupContent(buildNodePopup(node));
             marker.openPopup();
+            onNodeClick(node);
         });
     });
 
@@ -615,6 +603,8 @@ async function onNodeClick(node){
 }
 
 map.on('click', e=>{
+    if(e.originalEvent.defaultPrevented) return;
+
     if(!e.originalEvent.target.classList.contains('leaflet-interactive')){
         edgeLayer.clearLayers();
         selectedNodeId=null;
