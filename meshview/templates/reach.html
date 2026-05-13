@@ -46,6 +46,11 @@
     margin-left: auto;
 }
 
+.reach-node-link {
+    align-self: center;
+    white-space: nowrap;
+}
+
 @media (max-width: 600px) {
     .reach-controls {
         flex-direction: column;
@@ -176,15 +181,23 @@
                 <option value="30">30</option>
                 <option value="40">40</option>
                 <option value="50">50</option>
+                <option value="60">60</option>
+                <option value="70">70</option>
+                <option value="80">80</option>
+                <option value="90">90</option>
+                <option value="100">100</option>
             </select>
             <button class="btn btn-primary" type="submit">Load</button>
+            <a class="btn btn-outline-secondary reach-node-link" id="reach-node-link" href="/node/3530776522">
+                Back to Node
+            </a>
         </form>
 
         <div class="reach-table-wrap">
             <table class="table table-dark table-sm table-striped reach-table">
                 <thead>
                     <tr>
-                        <th>Node Reach</th>
+                        <th>Reliability Bands</th>
                         <th>Gateway Count</th>
                     </tr>
                 </thead>
@@ -319,6 +332,7 @@ async function loadReachReport(nodeId = reachNodeId) {
     const packetLimit = Number(document.getElementById("reach-packet-limit").value) || defaultReachPacketLimit;
     const packetCountEl = document.getElementById("reach-packet-count");
     const gatewayCountEl = document.getElementById("reach-gateway-count");
+    const nodeLinkEl = document.getElementById("reach-node-link");
     const bodyEls = [
         document.getElementById("reach-packet-body-left"),
         document.getElementById("reach-packet-body-right"),
@@ -332,6 +346,7 @@ async function loadReachReport(nodeId = reachNodeId) {
 
     packetCountEl.textContent = "...";
     gatewayCountEl.textContent = "...";
+    nodeLinkEl.href = `/node/${encodeURIComponent(reachNodeId)}`;
     bucketBodyEl.innerHTML = '<tr><td colspan="2" class="reach-muted">Loading statistics...</td></tr>';
     setGatewayTables('<tr><td colspan="3" class="reach-muted">Loading packets...</td></tr>');
 
