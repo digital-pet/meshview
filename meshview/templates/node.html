@@ -341,7 +341,7 @@
             <span>🔳</span> <span data-translate-lang="show_qr_code">Show QR Code</span>
         </button>
         <button onclick="openReachReport()" id="reachReportBtn">
-            <span>📈</span> <span>Reach</span>
+            <span>📈</span> <span>Reliability</span>
         </button>
         <button onclick="toggleCoverage()" id="toggleCoverageBtn" disabled title="Location required for coverage">
             <span>📡</span> <span data-translate-lang="toggle_coverage">Predicted Coverage</span>
@@ -1835,7 +1835,7 @@ function showQrCode() {
 
 function openReachReport() {
     if (!fromNodeId) return;
-    window.location.href = `/reach?node_id=${encodeURIComponent(fromNodeId)}`;
+    window.location.href = `/reliability?node_id=${encodeURIComponent(fromNodeId)}`;
 }
 
 function closeQrModal() {

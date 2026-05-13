@@ -259,9 +259,9 @@ async def map(request):
     return web.Response(text=template.render(), content_type="text/html")
 
 
-@routes.get("/reach")
-async def reach(request):
-    template = env.get_template("reach.html")
+@routes.get("/reliability")
+async def reliability(request):
+    template = env.get_template("reliability.html")
     return web.Response(text=template.render(), content_type="text/html")
 
 
