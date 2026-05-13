@@ -1,0 +1,308 @@
+{% extends "base.html" %}
+
+{% block css %}
+.reach-page {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 16px;
+}
+
+.reach-header {
+    margin-bottom: 16px;
+}
+
+.reach-header h1 {
+    font-size: 1.6rem;
+    margin-bottom: 6px;
+}
+
+.reach-panel {
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 8px;
+    padding: 16px;
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.reach-node-id {
+    font-family: monospace;
+    font-size: 1.1rem;
+}
+
+.reach-controls {
+    display: flex;
+    gap: 10px;
+    margin-top: 14px;
+}
+
+.reach-search {
+    min-width: 0;
+    flex: 1;
+}
+
+@media (max-width: 600px) {
+    .reach-controls {
+        flex-direction: column;
+    }
+}
+
+.reach-summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px;
+    margin-top: 16px;
+}
+
+.reach-metric {
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 8px;
+    padding: 12px;
+    background: rgba(0, 0, 0, 0.18);
+}
+
+.reach-metric-value {
+    font-size: 1.5rem;
+    line-height: 1.2;
+}
+
+.reach-table-wrap {
+    overflow-x: auto;
+    margin-top: 18px;
+}
+
+.reach-table {
+    width: 100%;
+    min-width: 760px;
+}
+
+.reach-table th,
+.reach-table td {
+    vertical-align: top;
+}
+
+.reach-muted {
+    color: rgba(255, 255, 255, 0.62);
+}
+{% endblock %}
+
+{% block body %}
+<main class="reach-page">
+    <div class="reach-header">
+        <h1>Reach Report</h1>
+        <p class="text-secondary mb-0">
+            Review how often each gateway hears packets from a selected node.
+        </p>
+    </div>
+
+    <section class="reach-panel">
+        <div class="text-secondary">Selected Node ID</div>
+        <div class="reach-node-id" id="reach-node-id">3530776522</div>
+
+        <form class="reach-controls" id="reach-search-form">
+            <input
+                class="form-control reach-search"
+                id="reach-node-search"
+                list="reach-node-options"
+                placeholder="Search node name or enter node ID"
+                autocomplete="off"
+            >
+            <datalist id="reach-node-options"></datalist>
+            <button class="btn btn-primary" type="submit">Load</button>
+        </form>
+
+        <div class="reach-summary">
+            <div class="reach-metric">
+                <div class="text-secondary">Latest Packets</div>
+                <div class="reach-metric-value" id="reach-packet-count">...</div>
+            </div>
+            <div class="reach-metric">
+                <div class="text-secondary">Unique Gateways</div>
+                <div class="reach-metric-value" id="reach-gateway-count">...</div>
+            </div>
+        </div>
+
+        <div class="reach-table-wrap">
+            <table class="table table-dark table-sm table-striped reach-table">
+                <thead>
+                    <tr>
+                        <th>Gateway</th>
+                        <th>Heard Packets</th>
+                        <th>Total Packets</th>
+                        <th>Reach</th>
+                    </tr>
+                </thead>
+                <tbody id="reach-packet-body">
+                    <tr>
+                        <td colspan="4" class="reach-muted">Loading packets...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+</main>
+
+<script>
+const defaultReachNodeId = 3530776522;
+const reachPacketLimit = 20;
+let reachNodeId = defaultReachNodeId;
+let reachNodes = [];
+
+function escapeHtml(value) {
+    return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+}
+
+function gatewayLabel(nodeId, nodesById) {
+    const node = nodesById.get(Number(nodeId));
+    const name = node?.long_name || node?.short_name;
+    return name ? `${name} (${nodeId})` : String(nodeId);
+}
+
+function nodeSearchLabel(node) {
+    const name = node.long_name || node.short_name || "Unnamed";
+    return `${name} (${node.node_id})`;
+}
+
+function parseNodeSearchValue(value) {
+    const trimmed = value.trim();
+    const parenthesizedId = trimmed.match(/\((\d+)\)\s*$/);
+    if (parenthesizedId) return Number(parenthesizedId[1]);
+
+    const rawId = trimmed.match(/^\d+$/);
+    if (rawId) return Number(trimmed);
+
+    const lower = trimmed.toLowerCase();
+    const node = reachNodes.find(n =>
+        (n.long_name || "").toLowerCase() === lower ||
+        (n.short_name || "").toLowerCase() === lower
+    );
+    return node ? Number(node.node_id) : null;
+}
+
+async function fetchJson(url) {
+    const res = await fetch(url);
+    if (!res.ok) {
+        throw new Error(`${url} returned ${res.status}`);
+    }
+    return res.json();
+}
+
+async function loadReachNodes() {
+    const data = await fetchJson("/api/nodes");
+    reachNodes = data.nodes || [];
+
+    const optionsEl = document.getElementById("reach-node-options");
+    optionsEl.innerHTML = reachNodes
+        .filter(node => node.node_id)
+        .map(node => `<option value="${escapeHtml(nodeSearchLabel(node))}"></option>`)
+        .join("");
+
+    return reachNodes;
+}
+
+async function loadReachReport(nodeId = reachNodeId) {
+    reachNodeId = Number(nodeId);
+    const packetCountEl = document.getElementById("reach-packet-count");
+    const gatewayCountEl = document.getElementById("reach-gateway-count");
+    const bodyEl = document.getElementById("reach-packet-body");
+    const selectedNodeEl = document.getElementById("reach-node-id");
+
+    selectedNodeEl.textContent = reachNodeId;
+    packetCountEl.textContent = "...";
+    gatewayCountEl.textContent = "...";
+    bodyEl.innerHTML = '<tr><td colspan="4" class="reach-muted">Loading packets...</td></tr>';
+
+    try {
+        const [packetData] = await Promise.all([
+            fetchJson(`/api/packets?from_node_id=${reachNodeId}&limit=${reachPacketLimit}`),
+        ]);
+
+        const packets = packetData.packets || [];
+        const nodesById = new Map(reachNodes.map(node => [Number(node.node_id), node]));
+
+        packetCountEl.textContent = packets.length;
+
+        if (packets.length === 0) {
+            gatewayCountEl.textContent = "0";
+            bodyEl.innerHTML = '<tr><td colspan="4" class="reach-muted">No packets found.</td></tr>';
+            return;
+        }
+
+        const seenResults = await Promise.all(
+            packets.map(packet =>
+                fetchJson(`/api/packets_seen/${packet.id}`)
+                    .then(data => ({ packet, seen: data.seen || [] }))
+                    .catch(err => {
+                        console.error("Failed to load packet seen rows", packet.id, err);
+                        return { packet, seen: [], error: true };
+                    })
+            )
+        );
+
+        const gatewayStats = new Map();
+        seenResults.forEach(result => {
+            const gatewaysForPacket = new Set(result.seen.map(row => Number(row.node_id)));
+            gatewaysForPacket.forEach(nodeId => {
+                gatewayStats.set(nodeId, (gatewayStats.get(nodeId) || 0) + 1);
+            });
+        });
+
+        const gatewayRows = [...gatewayStats.entries()]
+            .map(([nodeId, heardCount]) => ({
+                nodeId,
+                heardCount,
+                percent: packets.length ? (heardCount / packets.length) * 100 : 0,
+            }))
+            .sort((a, b) => b.percent - a.percent || b.heardCount - a.heardCount || a.nodeId - b.nodeId);
+
+        gatewayCountEl.textContent = gatewayRows.length;
+        bodyEl.innerHTML = gatewayRows.length
+            ? gatewayRows.map(row => `
+                <tr>
+                    <td>${escapeHtml(gatewayLabel(row.nodeId, nodesById))}</td>
+                    <td>${row.heardCount}</td>
+                    <td>${packets.length}</td>
+                    <td>${row.percent.toFixed(1)}%</td>
+                </tr>
+            `).join("")
+            : '<tr><td colspan="4" class="reach-muted">No gateways heard these packets.</td></tr>';
+    } catch (err) {
+        console.error("Failed to load reach report:", err);
+        packetCountEl.textContent = "!";
+        gatewayCountEl.textContent = "!";
+        bodyEl.innerHTML = '<tr><td colspan="4" class="text-danger">Failed to load report.</td></tr>';
+    }
+}
+
+document.addEventListener("DOMContentLoaded", async () => {
+    document.getElementById("reach-search-form").addEventListener("submit", event => {
+        event.preventDefault();
+
+        const nodeId = parseNodeSearchValue(document.getElementById("reach-node-search").value);
+        if (!nodeId) {
+            document.getElementById("reach-packet-body").innerHTML =
+                '<tr><td colspan="4" class="text-warning">Enter a valid node ID or select a node.</td></tr>';
+            return;
+        }
+
+        loadReachReport(nodeId);
+    });
+
+    try {
+        await loadReachNodes();
+    } catch (err) {
+        console.error("Failed to load node list:", err);
+    }
+
+    const searchEl = document.getElementById("reach-node-search");
+    searchEl.value = nodeSearchLabel(
+        reachNodes.find(node => Number(node.node_id) === defaultReachNodeId) ||
+        { node_id: defaultReachNodeId, long_name: "Node" }
+    );
+    loadReachReport(defaultReachNodeId);
+});
+</script>
+{% endblock %}

@@ -259,6 +259,12 @@ async def map(request):
     return web.Response(text=template.render(), content_type="text/html")
 
 
+@routes.get("/reach")
+async def reach(request):
+    template = env.get_template("reach.html")
+    return web.Response(text=template.render(), content_type="text/html")
+
+
 @routes.get("/nodelist")
 async def nodelist(request):
     template = env.get_template("nodelist.html")
