@@ -144,6 +144,73 @@
     color: rgba(255, 255, 255, 0.62);
 }
 
+.reach-heard-link {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: #8ab4f8;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.port-tag {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: #fff;
+}
+
+.reliability-modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 5000;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    background: rgba(0, 0, 0, 0.72);
+}
+
+.reliability-modal.open {
+    display: flex;
+}
+
+.reliability-modal-panel {
+    width: min(760px, 100%);
+    max-height: min(720px, 92vh);
+    overflow: auto;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 8px;
+    background: #111827;
+    padding: 12px;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+}
+
+.reliability-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+}
+
+.reliability-modal-title {
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.reliability-status-heard {
+    color: #4ade80 !important;
+    font-weight: 700;
+}
+
+.reliability-status-missed {
+    color: #f87171 !important;
+    font-weight: 700;
+}
+
 @media (max-width: 600px) {
     .reach-gateway-panels {
         grid-template-columns: 1fr;
@@ -174,6 +241,15 @@
                 autocomplete="off"
             >
             <datalist id="reach-node-options"></datalist>
+            <label class="reach-limit-label" for="reliability-packet-type">Packet type</label>
+            <select class="form-select" id="reliability-packet-type" style="max-width:150px;">
+                <option value="" selected>All</option>
+                <option value="1">Text</option>
+                <option value="3">Position</option>
+                <option value="4">Node Info</option>
+                <option value="67">Telemetry</option>
+                <option value="70">Traceroute</option>
+            </select>
             <label class="reach-limit-label" for="reach-packet-limit">Packets to review</label>
             <select class="form-select" id="reach-packet-limit" style="max-width:110px;">
                 <option value="10">10</option>
@@ -257,12 +333,40 @@
     </section>
 </main>
 
+<div class="reliability-modal" id="gateway-packet-modal" role="dialog" aria-modal="true" aria-labelledby="gateway-packet-title">
+    <div class="reliability-modal-panel">
+        <div class="reliability-modal-header">
+            <div class="reliability-modal-title" id="gateway-packet-title">Packet Details</div>
+            <button class="btn btn-sm btn-outline-light" type="button" onclick="closeGatewayPacketModal()">Close</button>
+        </div>
+        <div class="reach-table-wrap">
+            <table class="table table-dark table-sm table-striped reach-table">
+                <thead>
+                    <tr>
+                        <th>Packet</th>
+                        <th>Time</th>
+                        <th>Type</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody id="gateway-packet-body">
+                    <tr>
+                        <td colspan="4" class="reach-muted">No packet selected.</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script src="/static/portmaps.js"></script>
 <script>
 const defaultReachNodeId = 3530776522;
 const defaultReachPacketLimit = 20;
 const initialReachNodeId = Number(new URLSearchParams(window.location.search).get("node_id")) || defaultReachNodeId;
 let reachNodeId = initialReachNodeId;
 let reachNodes = [];
+let reliabilityGatewayDetails = new Map();
 
 function escapeHtml(value) {
     return String(value ?? "")
@@ -288,6 +392,48 @@ function nodeLink(nodeId, nodesById) {
 function nodeSearchLabel(node) {
     const name = node.long_name || node.short_name || "Unnamed";
     return `${name} (${node.node_id})`;
+}
+
+function formatPacketTime(us) {
+    if (!us) return "N/A";
+    return new Date(us / 1000).toLocaleString();
+}
+
+function packetTypeTag(portnum) {
+    const name = window.PORT_MAP?.[portnum] || "Unknown";
+    const color = window.PORT_COLORS?.[portnum] || "#6c757d";
+    return `
+        <span class="port-tag" style="background-color:${color}">
+            ${escapeHtml(name)}
+        </span>
+        <span class="text-secondary">(${escapeHtml(portnum ?? "?")})</span>
+    `;
+}
+
+function openGatewayPacketModal(nodeId) {
+    const details = reliabilityGatewayDetails.get(Number(nodeId));
+    const titleEl = document.getElementById("gateway-packet-title");
+    const bodyEl = document.getElementById("gateway-packet-body");
+    const modalEl = document.getElementById("gateway-packet-modal");
+
+    if (!details) return;
+
+    titleEl.textContent = `${details.label}: ${details.heardCount} (${details.total}) packets heard`;
+    bodyEl.innerHTML = details.packets.map(packet => `
+        <tr>
+            <td><a href="/packet/${packet.id}">${packet.id}</a></td>
+            <td>${escapeHtml(formatPacketTime(packet.import_time_us))}</td>
+            <td>${packetTypeTag(packet.portnum)}</td>
+            <td class="${packet.heard ? "reliability-status-heard" : "reliability-status-missed"}">
+                ${packet.heard ? "Heard" : "Missed"}
+            </td>
+        </tr>
+    `).join("");
+    modalEl.classList.add("open");
+}
+
+function closeGatewayPacketModal() {
+    document.getElementById("gateway-packet-modal").classList.remove("open");
 }
 
 function parseNodeSearchValue(value) {
@@ -330,6 +476,7 @@ async function loadReachNodes() {
 async function loadReachReport(nodeId = reachNodeId) {
     reachNodeId = Number(nodeId);
     const packetLimit = Number(document.getElementById("reach-packet-limit").value) || defaultReachPacketLimit;
+    const packetType = document.getElementById("reliability-packet-type").value;
     const packetCountEl = document.getElementById("reach-packet-count");
     const gatewayCountEl = document.getElementById("reach-gateway-count");
     const nodeLinkEl = document.getElementById("reach-node-link");
@@ -346,16 +493,22 @@ async function loadReachReport(nodeId = reachNodeId) {
 
     packetCountEl.textContent = "...";
     gatewayCountEl.textContent = "...";
+    reliabilityGatewayDetails = new Map();
     nodeLinkEl.href = `/node/${encodeURIComponent(reachNodeId)}`;
     bucketBodyEl.innerHTML = '<tr><td colspan="2" class="reach-muted">Loading statistics...</td></tr>';
     setGatewayTables('<tr><td colspan="3" class="reach-muted">Loading packets...</td></tr>');
 
     try {
+        const packetUrl = new URL("/api/packets", window.location.origin);
+        packetUrl.searchParams.set("from_node_id", reachNodeId);
+        packetUrl.searchParams.set("limit", packetLimit);
+        if (packetType) packetUrl.searchParams.set("portnum", packetType);
+
         const [packetData] = await Promise.all([
-            fetchJson(`/api/packets?from_node_id=${reachNodeId}&limit=${packetLimit}`),
+            fetchJson(packetUrl),
         ]);
 
-        const packets = packetData.packets || [];
+        const packets = (packetData.packets || []).filter(packet => packet.portnum !== 71);
         const nodesById = new Map(reachNodes.map(node => [Number(node.node_id), node]));
 
         packetCountEl.textContent = packets.length;
@@ -381,6 +534,7 @@ async function loadReachReport(nodeId = reachNodeId) {
         const gatewayStats = new Map();
         seenResults.forEach(result => {
             const gatewaysForPacket = new Set(result.seen.map(row => Number(row.node_id)));
+            gatewaysForPacket.delete(reachNodeId);
             gatewaysForPacket.forEach(nodeId => {
                 gatewayStats.set(nodeId, (gatewayStats.get(nodeId) || 0) + 1);
             });
@@ -428,11 +582,30 @@ async function loadReachReport(nodeId = reachNodeId) {
             ? rows.map(row => `
                 <tr>
                     <td>${nodeLink(row.nodeId, nodesById)}</td>
-                    <td>${row.heardCount} (${packets.length})</td>
+                    <td>
+                        <button class="reach-heard-link" type="button" onclick="openGatewayPacketModal(${row.nodeId})">
+                            ${row.heardCount}
+                        </button>
+                        <span class="text-secondary">(${packets.length})</span>
+                    </td>
                     <td>${row.percent.toFixed(1)}%</td>
                 </tr>
             `).join("")
             : '<tr><td colspan="3" class="reach-muted">No gateways heard these packets.</td></tr>';
+        reliabilityGatewayDetails = new Map(gatewayRows.map(row => [
+            Number(row.nodeId),
+            {
+                label: gatewayLabel(row.nodeId, nodesById),
+                heardCount: row.heardCount,
+                total: packets.length,
+                packets: seenResults.map(result => ({
+                    id: result.packet.id,
+                    import_time_us: result.packet.import_time_us,
+                    portnum: result.packet.portnum,
+                    heard: new Set(result.seen.map(seen => Number(seen.node_id))).has(Number(row.nodeId)),
+                })),
+            }
+        ]));
         const splitIndex = Math.ceil(gatewayRows.length / 2);
         bodyEls[0].innerHTML = renderGatewayRows(gatewayRows.slice(0, splitIndex));
         bodyEls[1].innerHTML = gatewayRows.length > 1
@@ -448,6 +621,10 @@ async function loadReachReport(nodeId = reachNodeId) {
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
+    document.getElementById("gateway-packet-modal").addEventListener("click", event => {
+        if (event.target.id === "gateway-packet-modal") closeGatewayPacketModal();
+    });
+
     document.getElementById("reach-search-form").addEventListener("submit", event => {
         event.preventDefault();
 
