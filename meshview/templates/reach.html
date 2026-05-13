@@ -302,7 +302,7 @@ async function fetchJson(url) {
 }
 
 async function loadReachNodes() {
-    const data = await fetchJson("/api/nodes");
+    const data = await fetchJson("/api/nodes?days_active=3");
     reachNodes = data.nodes || [];
 
     const optionsEl = document.getElementById("reach-node-options");
