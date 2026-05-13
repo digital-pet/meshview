@@ -36,7 +36,15 @@
 
 .reach-search {
     min-width: 0;
-    flex: 1;
+    flex: 0 1 420px;
+}
+
+.reach-limit-label {
+    align-self: center;
+    margin-left: auto;
+    white-space: nowrap;
+    color: rgba(255, 255, 255, 0.72);
+    font-size: 0.9rem;
 }
 
 @media (max-width: 600px) {
@@ -161,6 +169,14 @@
                 autocomplete="off"
             >
             <datalist id="reach-node-options"></datalist>
+            <label class="reach-limit-label" for="reach-packet-limit">Packets to review</label>
+            <select class="form-select" id="reach-packet-limit" style="max-width:110px;">
+                <option value="10">10</option>
+                <option value="20" selected>20</option>
+                <option value="30">30</option>
+                <option value="40">40</option>
+                <option value="50">50</option>
+            </select>
             <button class="btn btn-primary" type="submit">Load</button>
         </form>
 
@@ -230,7 +246,7 @@
 
 <script>
 const defaultReachNodeId = 3530776522;
-const reachPacketLimit = 20;
+const defaultReachPacketLimit = 20;
 const initialReachNodeId = Number(new URLSearchParams(window.location.search).get("node_id")) || defaultReachNodeId;
 let reachNodeId = initialReachNodeId;
 let reachNodes = [];
@@ -294,6 +310,7 @@ async function loadReachNodes() {
 
 async function loadReachReport(nodeId = reachNodeId) {
     reachNodeId = Number(nodeId);
+    const packetLimit = Number(document.getElementById("reach-packet-limit").value) || defaultReachPacketLimit;
     const packetCountEl = document.getElementById("reach-packet-count");
     const gatewayCountEl = document.getElementById("reach-gateway-count");
     const bodyEls = [
@@ -316,7 +333,7 @@ async function loadReachReport(nodeId = reachNodeId) {
 
     try {
         const [packetData] = await Promise.all([
-            fetchJson(`/api/packets?from_node_id=${reachNodeId}&limit=${reachPacketLimit}`),
+            fetchJson(`/api/packets?from_node_id=${reachNodeId}&limit=${packetLimit}`),
         ]);
 
         const packets = packetData.packets || [];
@@ -391,7 +408,7 @@ async function loadReachReport(nodeId = reachNodeId) {
             ? rows.map(row => `
                 <tr>
                     <td>${escapeHtml(gatewayLabel(row.nodeId, nodesById))}</td>
-                    <td>${row.heardCount}</td>
+                    <td>${row.heardCount} (${packets.length})</td>
                     <td>${row.percent.toFixed(1)}%</td>
                 </tr>
             `).join("")
