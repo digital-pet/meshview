@@ -23,11 +23,6 @@
     background: rgba(255, 255, 255, 0.04);
 }
 
-.reach-node-id {
-    font-family: monospace;
-    font-size: 1rem;
-}
-
 .reach-controls {
     display: flex;
     gap: 8px;
@@ -39,12 +34,16 @@
     flex: 0 1 420px;
 }
 
+.reach-search-label,
 .reach-limit-label {
     align-self: center;
-    margin-left: auto;
     white-space: nowrap;
     color: rgba(255, 255, 255, 0.72);
     font-size: 0.9rem;
+}
+
+.reach-limit-label {
+    margin-left: auto;
 }
 
 @media (max-width: 600px) {
@@ -157,10 +156,8 @@
     </div>
 
     <section class="reach-panel">
-        <div class="text-secondary">Selected Node ID</div>
-        <div class="reach-node-id" id="reach-node-id">3530776522</div>
-
         <form class="reach-controls" id="reach-search-form">
+            <label class="reach-search-label" for="reach-node-search">Search</label>
             <input
                 class="form-control reach-search"
                 id="reach-node-search"
@@ -266,6 +263,12 @@ function gatewayLabel(nodeId, nodesById) {
     return name ? `${name} (${nodeId})` : String(nodeId);
 }
 
+function nodeLink(nodeId, nodesById) {
+    return `<a href="/node/${encodeURIComponent(nodeId)}">${
+        escapeHtml(gatewayLabel(nodeId, nodesById))
+    }</a>`;
+}
+
 function nodeSearchLabel(node) {
     const name = node.long_name || node.short_name || "Unnamed";
     return `${name} (${node.node_id})`;
@@ -318,14 +321,12 @@ async function loadReachReport(nodeId = reachNodeId) {
         document.getElementById("reach-packet-body-right"),
     ];
     const bucketBodyEl = document.getElementById("reach-bucket-body");
-    const selectedNodeEl = document.getElementById("reach-node-id");
     const setGatewayTables = html => {
         bodyEls.forEach(el => {
             el.innerHTML = html;
         });
     };
 
-    selectedNodeEl.textContent = reachNodeId;
     packetCountEl.textContent = "...";
     gatewayCountEl.textContent = "...";
     bucketBodyEl.innerHTML = '<tr><td colspan="2" class="reach-muted">Loading statistics...</td></tr>';
@@ -407,7 +408,7 @@ async function loadReachReport(nodeId = reachNodeId) {
         const renderGatewayRows = rows => rows.length
             ? rows.map(row => `
                 <tr>
-                    <td>${escapeHtml(gatewayLabel(row.nodeId, nodesById))}</td>
+                    <td>${nodeLink(row.nodeId, nodesById)}</td>
                     <td>${row.heardCount} (${packets.length})</td>
                     <td>${row.percent.toFixed(1)}%</td>
                 </tr>
