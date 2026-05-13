@@ -119,7 +119,7 @@
     height: 100%;
     min-width: 24px;
     border-radius: inherit;
-    background: #4ade80;
+    background: var(--reach-bar-color, #4ade80);
 }
 
 .reach-count-bar-value {
@@ -151,7 +151,10 @@
     <div class="reach-header">
         <h1>Reach Report</h1>
         <p class="text-secondary mb-0">
-            Review how often each gateway hears packets from a selected node.
+            Review how often each gateway hears packets from a selected node. The report uses the
+            latest selected packet sample and calculates reach as heard packets divided by packets
+            reviewed. The range table groups gateways by reliability bands, while the gateway list
+            shows each gateway's heard count and percentage for the same sample.
         </p>
     </div>
 
@@ -378,16 +381,17 @@ async function loadReachReport(nodeId = reachNodeId) {
 
         gatewayCountEl.textContent = gatewayRows.length;
         const buckets = [
-            ["100%", row => row.percent === 100],
-            ["90-99%", row => row.percent >= 90 && row.percent < 100],
-            ["80-89%", row => row.percent >= 80 && row.percent < 90],
-            ["70-79%", row => row.percent >= 70 && row.percent < 80],
-            ["60-69%", row => row.percent >= 60 && row.percent < 70],
-            ["50-59%", row => row.percent >= 50 && row.percent < 60],
+            { label: "100%", color: "#22c55e", matches: row => row.percent === 100 },
+            { label: "90-99%", color: "#84cc16", matches: row => row.percent >= 90 && row.percent < 100 },
+            { label: "80-89%", color: "#eab308", matches: row => row.percent >= 80 && row.percent < 90 },
+            { label: "70-79%", color: "#f97316", matches: row => row.percent >= 70 && row.percent < 80 },
+            { label: "60-69%", color: "#ef4444", matches: row => row.percent >= 60 && row.percent < 70 },
+            { label: "50-59%", color: "#991b1b", matches: row => row.percent >= 50 && row.percent < 60 },
         ];
-        const bucketRows = buckets.map(([label, matches]) => ({
-            label,
-            count: gatewayRows.filter(matches).length,
+        const bucketRows = buckets.map(bucket => ({
+            label: bucket.label,
+            color: bucket.color,
+            count: gatewayRows.filter(bucket.matches).length,
         }));
         const maxBucketCount = Math.max(...bucketRows.map(row => row.count), 1);
         bucketBodyEl.innerHTML = bucketRows.map(row => {
@@ -397,7 +401,7 @@ async function loadReachReport(nodeId = reachNodeId) {
                     <td>${row.label}</td>
                     <td class="reach-count-bar-cell">
                         <div class="reach-count-bar-track">
-                            <div class="reach-count-bar-fill" style="width:${width}%"></div>
+                            <div class="reach-count-bar-fill" style="width:${width}%; --reach-bar-color:${row.color};"></div>
                             <div class="reach-count-bar-value">${row.count}</div>
                         </div>
                     </td>
