@@ -8,30 +8,30 @@
 }
 
 .reach-header {
-    margin-bottom: 16px;
+    margin-bottom: 10px;
 }
 
 .reach-header h1 {
-    font-size: 1.6rem;
-    margin-bottom: 6px;
+    font-size: 1.35rem;
+    margin-bottom: 2px;
 }
 
 .reach-panel {
     border: 1px solid rgba(255, 255, 255, 0.18);
     border-radius: 8px;
-    padding: 16px;
+    padding: 12px;
     background: rgba(255, 255, 255, 0.04);
 }
 
 .reach-node-id {
     font-family: monospace;
-    font-size: 1.1rem;
+    font-size: 1rem;
 }
 
 .reach-controls {
     display: flex;
-    gap: 10px;
-    margin-top: 14px;
+    gap: 8px;
+    margin-top: 8px;
 }
 
 .reach-search {
@@ -48,35 +48,69 @@
 .reach-summary {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-    gap: 12px;
-    margin-top: 16px;
+    gap: 8px;
+    margin-top: 10px;
 }
 
 .reach-metric {
     border: 1px solid rgba(255, 255, 255, 0.12);
     border-radius: 8px;
-    padding: 12px;
+    padding: 8px 10px;
     background: rgba(0, 0, 0, 0.18);
 }
 
 .reach-metric-value {
-    font-size: 1.5rem;
+    font-size: 1.2rem;
     line-height: 1.2;
 }
 
 .reach-table-wrap {
     overflow-x: auto;
-    margin-top: 18px;
+    margin-top: 10px;
 }
 
 .reach-table {
     width: 100%;
     min-width: 760px;
+    font-size: 0.9rem;
 }
 
 .reach-table th,
 .reach-table td {
     vertical-align: top;
+    padding: 0.35rem 0.5rem;
+}
+
+.reach-count-bar-cell {
+    min-width: 180px;
+}
+
+.reach-count-bar-track {
+    position: relative;
+    height: 20px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.12);
+    overflow: hidden;
+}
+
+.reach-count-bar-fill {
+    height: 100%;
+    min-width: 24px;
+    border-radius: inherit;
+    background: #4ade80;
+}
+
+.reach-count-bar-value {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    padding-left: 8px;
+    font-family: monospace;
+    font-size: 0.85rem;
+    color: #fff;
+    font-weight: 700;
 }
 
 .reach-muted {
@@ -108,6 +142,22 @@
             <datalist id="reach-node-options"></datalist>
             <button class="btn btn-primary" type="submit">Load</button>
         </form>
+
+        <div class="reach-table-wrap">
+            <table class="table table-dark table-sm table-striped reach-table">
+                <thead>
+                    <tr>
+                        <th>Node Reach</th>
+                        <th>Gateway Count</th>
+                    </tr>
+                </thead>
+                <tbody id="reach-bucket-body">
+                    <tr>
+                        <td colspan="2" class="reach-muted">Loading statistics...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
 
         <div class="reach-summary">
             <div class="reach-metric">
@@ -143,7 +193,8 @@
 <script>
 const defaultReachNodeId = 3530776522;
 const reachPacketLimit = 20;
-let reachNodeId = defaultReachNodeId;
+const initialReachNodeId = Number(new URLSearchParams(window.location.search).get("node_id")) || defaultReachNodeId;
+let reachNodeId = initialReachNodeId;
 let reachNodes = [];
 
 function escapeHtml(value) {
@@ -208,11 +259,13 @@ async function loadReachReport(nodeId = reachNodeId) {
     const packetCountEl = document.getElementById("reach-packet-count");
     const gatewayCountEl = document.getElementById("reach-gateway-count");
     const bodyEl = document.getElementById("reach-packet-body");
+    const bucketBodyEl = document.getElementById("reach-bucket-body");
     const selectedNodeEl = document.getElementById("reach-node-id");
 
     selectedNodeEl.textContent = reachNodeId;
     packetCountEl.textContent = "...";
     gatewayCountEl.textContent = "...";
+    bucketBodyEl.innerHTML = '<tr><td colspan="2" class="reach-muted">Loading statistics...</td></tr>';
     bodyEl.innerHTML = '<tr><td colspan="4" class="reach-muted">Loading packets...</td></tr>';
 
     try {
@@ -227,6 +280,7 @@ async function loadReachReport(nodeId = reachNodeId) {
 
         if (packets.length === 0) {
             gatewayCountEl.textContent = "0";
+            bucketBodyEl.innerHTML = '<tr><td colspan="2" class="reach-muted">No packets found.</td></tr>';
             bodyEl.innerHTML = '<tr><td colspan="4" class="reach-muted">No packets found.</td></tr>';
             return;
         }
@@ -259,6 +313,34 @@ async function loadReachReport(nodeId = reachNodeId) {
             .sort((a, b) => b.percent - a.percent || b.heardCount - a.heardCount || a.nodeId - b.nodeId);
 
         gatewayCountEl.textContent = gatewayRows.length;
+        const buckets = [
+            ["100%", row => row.percent === 100],
+            ["90-99%", row => row.percent >= 90 && row.percent < 100],
+            ["80-89%", row => row.percent >= 80 && row.percent < 90],
+            ["70-79%", row => row.percent >= 70 && row.percent < 80],
+            ["60-69%", row => row.percent >= 60 && row.percent < 70],
+            ["50-59%", row => row.percent >= 50 && row.percent < 60],
+        ];
+        const bucketRows = buckets.map(([label, matches]) => ({
+            label,
+            count: gatewayRows.filter(matches).length,
+        }));
+        const maxBucketCount = Math.max(...bucketRows.map(row => row.count), 1);
+        bucketBodyEl.innerHTML = bucketRows.map(row => {
+            const width = row.count > 0 ? Math.max((row.count / maxBucketCount) * 100, 8) : 0;
+            return `
+                <tr>
+                    <td>${row.label}</td>
+                    <td class="reach-count-bar-cell">
+                        <div class="reach-count-bar-track">
+                            <div class="reach-count-bar-fill" style="width:${width}%"></div>
+                            <div class="reach-count-bar-value">${row.count}</div>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }).join("");
+
         bodyEl.innerHTML = gatewayRows.length
             ? gatewayRows.map(row => `
                 <tr>
@@ -273,6 +355,7 @@ async function loadReachReport(nodeId = reachNodeId) {
         console.error("Failed to load reach report:", err);
         packetCountEl.textContent = "!";
         gatewayCountEl.textContent = "!";
+        bucketBodyEl.innerHTML = '<tr><td colspan="2" class="text-danger">Failed to load statistics.</td></tr>';
         bodyEl.innerHTML = '<tr><td colspan="4" class="text-danger">Failed to load report.</td></tr>';
     }
 }
@@ -283,6 +366,8 @@ document.addEventListener("DOMContentLoaded", async () => {
 
         const nodeId = parseNodeSearchValue(document.getElementById("reach-node-search").value);
         if (!nodeId) {
+            document.getElementById("reach-bucket-body").innerHTML =
+                '<tr><td colspan="2" class="text-warning">Enter a valid node ID or select a node.</td></tr>';
             document.getElementById("reach-packet-body").innerHTML =
                 '<tr><td colspan="4" class="text-warning">Enter a valid node ID or select a node.</td></tr>';
             return;
@@ -299,10 +384,10 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     const searchEl = document.getElementById("reach-node-search");
     searchEl.value = nodeSearchLabel(
-        reachNodes.find(node => Number(node.node_id) === defaultReachNodeId) ||
-        { node_id: defaultReachNodeId, long_name: "Node" }
+        reachNodes.find(node => Number(node.node_id) === initialReachNodeId) ||
+        { node_id: initialReachNodeId, long_name: "Node" }
     );
-    loadReachReport(defaultReachNodeId);
+    loadReachReport(initialReachNodeId);
 });
 </script>
 {% endblock %}
