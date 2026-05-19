@@ -207,11 +207,22 @@ const UNMAPPED_TTL_MS = 5000;
 
 const portMap = window.PORT_LABEL_MAP;
 
-const palette = ["#e6194b","#4363d8","#f58231","#911eb4","#46f0f0","#f032e6","#bcf60c","#fabebe",
-                 "#008080","#e6beff","#9a6324","#fffac8","#800000","#aaffc3","#808000","#ffd8b1",
-                 "#000075","#808080"];
+const palette = ["#bcf60c","#fabebe","#e6beff","#9a6324","#fffac8","#800000","#aaffc3","#ffd8b1",
+                 "#808080"];
 
-const colorMap = new Map(); let nextColorIndex = 0;
+const channelColorOverrides = {
+    longfast: "#4363d8",
+    longslow: "#000075",
+    verylongslow: "#808000",
+    mediumslow: "#008080",
+    mediumfast: "#e6194b",
+    shortslow: "#911eb4",
+    shortfast: "#f58231",
+    longmoderate: "#46f0f0",
+    shortturbo: "#f032e6"
+};
+
+const colorMap = new Map();
 const channelSet = new Set();
 
 map.on("popupopen", function (e) {
@@ -226,10 +237,17 @@ function timeAgoFromUs(us){
     return d>0?d+"d":h>0?h+"h":m>0?m+"m":s+"s";
 }
 
+function normalizeChannelName(str){
+    return String(str || "Unknown").toLowerCase().replace(/[\s_-]+/g, "");
+}
+
 function hashToColor(str){
-    if(colorMap.has(str)) return colorMap.get(str);
-    const c = palette[nextColorIndex++ % palette.length];
-    colorMap.set(str,c);
+    const channel = String(str || "Unknown");
+    if(colorMap.has(channel)) return colorMap.get(channel);
+
+    const override = channelColorOverrides[normalizeChannelName(channel)];
+    const c = override || palette[Math.floor(hashToUnit(channel) * palette.length) % palette.length];
+    colorMap.set(channel,c);
     return c;
 }
 
@@ -695,7 +713,7 @@ function createChannelFilters(){
     const filterContainer = document.getElementById("filter-container");
     const saved = JSON.parse(localStorage.getItem("mapFilters") || "{}");
 
-    channelSet.forEach(channel=>{
+    [...channelSet].sort((a, b) => a.localeCompare(b)).forEach(channel=>{
         const cb=document.createElement("input");
         cb.type="checkbox";
         cb.className="filter-checkbox";
