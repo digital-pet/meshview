@@ -190,6 +190,11 @@ function applyTranslationsMap(root = document) {
 var map = L.map('map');
 L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
     { maxZoom:19, attribution:'&copy; OpenStreetMap' }).addTo(map);
+L.control.scale({
+    position: 'bottomleft',
+    metric: true,
+    imperial: true
+}).addTo(map);
 
 // Data structures
 var nodes = [], markers = {}, markerById = {}, nodeMap = new Map();

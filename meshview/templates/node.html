@@ -828,6 +828,11 @@ function initMap(){
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution:'&copy; OpenStreetMap'
     }).addTo(map);
+    L.control.scale({
+        position: 'bottomleft',
+        metric: true,
+        imperial: true
+    }).addTo(map);
 }
 
 async function toggleCoverage() {
