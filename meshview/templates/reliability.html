@@ -87,6 +87,37 @@
     font-size: 0.9rem;
 }
 
+.reach-map {
+    width: 100%;
+    height: 420px;
+    margin-top: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 8px;
+    overflow: hidden;
+    background: rgba(0, 0, 0, 0.18);
+}
+
+.reach-map-marker {
+    width: 34px;
+    height: 34px;
+    border: 2px solid #fff;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 0.65rem;
+    font-weight: 800;
+    line-height: 1;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.75);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+}
+
+.reach-map-marker-source {
+    background: #111827;
+    font-size: 0.95rem;
+}
+
 .reach-gateway-panels {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -297,6 +328,8 @@
             </table>
         </div>
 
+        <div id="reach-gateway-map" class="reach-map"></div>
+
         <div class="reach-summary">
             <div class="reach-metric">
                 <div class="text-secondary">Latest Packets</div>
@@ -379,7 +412,17 @@ const initialReachNodeId = Number(new URLSearchParams(window.location.search).ge
 let reachNodeId = initialReachNodeId;
 let reachNodes = [];
 let reliabilityGatewayDetails = new Map();
+let reliabilityMap = null;
+let reliabilityMapLayer = null;
 const countedReliabilityPorts = new Set([1, 3, 4, 67]);
+const reliabilityBuckets = [
+    { label: "100%", color: "#22c55e", matches: row => row.percent === 100 },
+    { label: "90-99%", color: "#84cc16", matches: row => row.percent >= 90 && row.percent < 100 },
+    { label: "80-89%", color: "#eab308", matches: row => row.percent >= 80 && row.percent < 90 },
+    { label: "70-79%", color: "#f97316", matches: row => row.percent >= 70 && row.percent < 80 },
+    { label: "60-69%", color: "#ef4444", matches: row => row.percent >= 60 && row.percent < 70 },
+    { label: "50-59%", color: "#991b1b", matches: row => row.percent >= 50 && row.percent < 60 },
+];
 
 function escapeHtml(value) {
     return String(value ?? "")
@@ -421,6 +464,99 @@ function packetTypeTag(portnum) {
         </span>
         <span class="text-secondary">(${escapeHtml(portnum ?? "?")})</span>
     `;
+}
+
+function reliabilityBucketFor(row) {
+    return reliabilityBuckets.find(bucket => bucket.matches(row)) || null;
+}
+
+function nodeLatLng(node) {
+    if (!node?.last_lat || !node?.last_long) return null;
+
+    const lat = node.last_lat / 1e7;
+    const lon = node.last_long / 1e7;
+    if (!Number.isFinite(lat) || !Number.isFinite(lon) || lat === 0 || lon === 0) return null;
+
+    return [lat, lon];
+}
+
+function initReliabilityMap() {
+    if (reliabilityMap) return reliabilityMap;
+
+    reliabilityMap = L.map("reach-gateway-map", { preferCanvas: true }).setView([37.7749, -122.4194], 8);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: "&copy; OpenStreetMap",
+        maxZoom: 19,
+    }).addTo(reliabilityMap);
+    L.control.scale({
+        position: "bottomleft",
+        metric: true,
+        imperial: true,
+    }).addTo(reliabilityMap);
+    reliabilityMapLayer = L.layerGroup().addTo(reliabilityMap);
+
+    return reliabilityMap;
+}
+
+function resetReliabilityMap() {
+    if (!reliabilityMap) initReliabilityMap();
+    reliabilityMapLayer.clearLayers();
+    requestAnimationFrame(() => reliabilityMap.invalidateSize());
+}
+
+function reachMapIcon(label, color, extraClass = "") {
+    return L.divIcon({
+        className: "",
+        iconSize: [34, 34],
+        iconAnchor: [17, 17],
+        popupAnchor: [0, -17],
+        html: `
+            <div class="reach-map-marker ${extraClass}" style="background:${color};">
+                ${escapeHtml(label)}
+            </div>
+        `,
+    });
+}
+
+function renderReliabilityMap(gatewayRows, nodesById) {
+    if (!reliabilityMap) initReliabilityMap();
+    reliabilityMapLayer.clearLayers();
+
+    const bounds = [];
+    const sourceNode = nodesById.get(Number(reachNodeId));
+    const sourceLatLng = nodeLatLng(sourceNode);
+    if (sourceLatLng) {
+        L.marker(sourceLatLng, {
+            icon: reachMapIcon("TX", "#111827", "reach-map-marker-source"),
+        }).bindPopup(`<b>${escapeHtml(gatewayLabel(reachNodeId, nodesById))}</b><br>Selected Node`)
+            .addTo(reliabilityMapLayer);
+        bounds.push(sourceLatLng);
+    }
+
+    gatewayRows.forEach(row => {
+        const bucket = reliabilityBucketFor(row);
+        if (!bucket) return;
+
+        const node = nodesById.get(Number(row.nodeId));
+        const latLng = nodeLatLng(node);
+        if (!latLng) return;
+
+        L.marker(latLng, {
+            icon: reachMapIcon(`${Math.round(row.percent)}%`, bucket.color),
+        }).bindPopup(`
+            <b>${nodeLink(row.nodeId, nodesById)}</b><br>
+            Reliability: ${row.percent.toFixed(1)}%<br>
+            Heard: ${row.heardCount} (${row.total})
+        `).addTo(reliabilityMapLayer);
+        bounds.push(latLng);
+    });
+
+    requestAnimationFrame(() => {
+        reliabilityMap.invalidateSize();
+        if (bounds.length) {
+            reliabilityMap.fitBounds(bounds, { padding: [24, 24], maxZoom: 12 });
+        }
+    });
 }
 
 function isSkippedReliabilityPacket(packet) {
@@ -519,6 +655,7 @@ async function loadReachReport(nodeId = reachNodeId) {
     nodeLinkEl.href = `/node/${encodeURIComponent(reachNodeId)}`;
     bucketBodyEl.innerHTML = '<tr><td colspan="2" class="reach-muted">Loading statistics...</td></tr>';
     setGatewayTables('<tr><td colspan="3" class="reach-muted">Loading packets...</td></tr>');
+    resetReliabilityMap();
 
     try {
         const packetUrl = new URL("/api/packets", window.location.origin);
@@ -539,6 +676,7 @@ async function loadReachReport(nodeId = reachNodeId) {
             gatewayCountEl.textContent = "0";
             bucketBodyEl.innerHTML = '<tr><td colspan="2" class="reach-muted">No packets found.</td></tr>';
             setGatewayTables('<tr><td colspan="3" class="reach-muted">No packets found.</td></tr>');
+            resetReliabilityMap();
             return;
         }
 
@@ -567,20 +705,13 @@ async function loadReachReport(nodeId = reachNodeId) {
             .map(([nodeId, heardCount]) => ({
                 nodeId,
                 heardCount,
+                total: reportResults.length,
                 percent: reportResults.length ? (heardCount / reportResults.length) * 100 : 0,
             }))
             .sort((a, b) => b.percent - a.percent || b.heardCount - a.heardCount || a.nodeId - b.nodeId);
 
         gatewayCountEl.textContent = gatewayRows.length;
-        const buckets = [
-            { label: "100%", color: "#22c55e", matches: row => row.percent === 100 },
-            { label: "90-99%", color: "#84cc16", matches: row => row.percent >= 90 && row.percent < 100 },
-            { label: "80-89%", color: "#eab308", matches: row => row.percent >= 80 && row.percent < 90 },
-            { label: "70-79%", color: "#f97316", matches: row => row.percent >= 70 && row.percent < 80 },
-            { label: "60-69%", color: "#ef4444", matches: row => row.percent >= 60 && row.percent < 70 },
-            { label: "50-59%", color: "#991b1b", matches: row => row.percent >= 50 && row.percent < 60 },
-        ];
-        const bucketRows = buckets.map(bucket => ({
+        const bucketRows = reliabilityBuckets.map(bucket => ({
             label: bucket.label,
             color: bucket.color,
             count: gatewayRows.filter(bucket.matches).length,
@@ -635,12 +766,14 @@ async function loadReachReport(nodeId = reachNodeId) {
         bodyEls[1].innerHTML = gatewayRows.length > 1
             ? renderGatewayRows(gatewayRows.slice(splitIndex))
             : '<tr><td colspan="3" class="reach-muted">No additional gateways.</td></tr>';
+        renderReliabilityMap(gatewayRows, nodesById);
     } catch (err) {
         console.error("Failed to load reach report:", err);
         packetCountEl.textContent = "!";
         gatewayCountEl.textContent = "!";
         bucketBodyEl.innerHTML = '<tr><td colspan="2" class="text-danger">Failed to load statistics.</td></tr>';
         setGatewayTables('<tr><td colspan="3" class="text-danger">Failed to load report.</td></tr>');
+        resetReliabilityMap();
     }
 }
 
@@ -671,6 +804,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     } catch (err) {
         console.error("Failed to load node list:", err);
     }
+    initReliabilityMap();
 
     const searchEl = document.getElementById("reach-node-search");
     searchEl.value = nodeSearchLabel(
