@@ -4,6 +4,13 @@
 
 The project serves as a real-time monitoring and diagnostic tool for the Meshtastic mesh network. It provides detailed insights into network activity, including message traffic, node positions, and telemetry data.
 
+### Version 3.0.6 — March 2026
+- Daily snapshots: added the `daily_snapshot` table, scheduled snapshot capture, and `/api/snapshots/daily` for historical node, packet, and gateway counts.
+- Stats/UI: expanded stats views with snapshot data and added channel filters to Chat and Firehose.
+- Map/node fixes: corrected node location handling, map popup behavior, packet page display, and node list sorting.
+- Ingestion/API reliability: improved duplicate `PacketSeen` handling, guarded invalid node info packets, and made traceroute/edge APIs more tolerant of decode failures.
+- Language support: added Russian translations.
+
 ### Version 3.0.5 — February 2026
 - **IMPORTANT:** the predicted coverage feature requires the extra `pyitm` dependency. If it is not installed, the coverage API will return 503.
   - Ubuntu install (inside the venv): `./env/bin/pip install pyitm`
