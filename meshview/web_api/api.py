@@ -1041,6 +1041,7 @@ async def api_node_qr(request):
 
     try:
         from meshtastic.protobuf.admin_pb2 import SharedContact
+        from meshtastic.protobuf.config_pb2 import Config
         from meshtastic.protobuf.mesh_pb2 import User
 
         user = User()
@@ -1056,6 +1057,13 @@ async def api_node_qr(request):
                 hw_model_value = getattr(HardwareModel, node.hw_model.upper(), None)
                 if hw_model_value is not None:
                     user.hw_model = hw_model_value
+            except (AttributeError, TypeError):
+                pass
+        if node.role:
+            try:
+                role_value = getattr(Config.DeviceConfig.Role, node.role.upper(), None)
+                if role_value is not None:
+                    user.role = role_value
             except (AttributeError, TypeError):
                 pass
 
@@ -1077,6 +1085,7 @@ async def api_node_qr(request):
                 "node_id": node_id,
                 "long_name": node.long_name,
                 "short_name": node.short_name,
+                "role": node.role,
                 "meshtastic_url": meshtastic_url,
             }
         )
