@@ -546,7 +546,11 @@ function renderReliabilityMap(gatewayRows, nodesById) {
         }).bindPopup(`
             <b>${nodeLink(row.nodeId, nodesById)}</b><br>
             Reliability: ${row.percent.toFixed(1)}%<br>
-            Heard: ${row.heardCount} (${row.total})
+            Heard:
+            <button class="reach-heard-link" type="button" onclick="openGatewayPacketModal(${row.nodeId})">
+                ${row.heardCount}
+            </button>
+            <span class="text-secondary">(${row.total})</span>
         `).addTo(reliabilityMapLayer);
         bounds.push(latLng);
     });
