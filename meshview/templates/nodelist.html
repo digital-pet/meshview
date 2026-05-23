@@ -103,6 +103,12 @@ select, .export-btn, .search-box, .clear-btn {
     font-weight: bold;
     color: white;
 }
+.node-list-note {
+    width: 80%;
+    margin: -4px auto 10px;
+    color: rgba(255, 255, 255, 0.68);
+    font-size: 0.9em;
+}
 .node-status {
     margin-left: 10px;
     padding: 2px 8px;
@@ -251,6 +257,9 @@ select, .export-btn, .search-box, .clear-btn {
     <span id="node-count">0</span>
     <span data-translate-lang="nodes_suffix">nodes</span>
     <span id="node-status" class="node-status" aria-live="polite"></span>
+</div>
+<div class="node-list-note" data-translate-lang="active_last_3_days_note">
+    Showing all nodes active in the last 3 days.
 </div>
 
 <!-- Desktop table -->
@@ -416,7 +425,7 @@ document.addEventListener("DOMContentLoaded", async function() {
     try {
         setStatus("Loading nodes…");
         await nextFrame();
-        const res = await fetch("/api/nodes");
+        const res = await fetch("/api/nodes?days_active=3");
         if (!res.ok) throw new Error("Failed to fetch nodes");
 
         const data = await res.json();
