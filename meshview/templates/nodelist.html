@@ -108,6 +108,14 @@ select, .export-btn, .search-box, .clear-btn {
     margin: -4px auto 10px;
     color: rgba(255, 255, 255, 0.68);
     font-size: 0.9em;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.node-list-note select {
+    padding: 3px 6px;
+    min-width: 70px;
 }
 .node-status {
     margin-left: 10px;
@@ -258,8 +266,14 @@ select, .export-btn, .search-box, .clear-btn {
     <span data-translate-lang="nodes_suffix">nodes</span>
     <span id="node-status" class="node-status" aria-live="polite"></span>
 </div>
-<div class="node-list-note" data-translate-lang="active_last_3_days_note">
-    Showing all nodes active in the last 3 days.
+<div class="node-list-note">
+    <span>Showing nodes active in the last</span>
+    <select id="days-active-filter" aria-label="Days active">
+        {% for day in range(1, 15) %}
+        <option value="{{ day }}" {% if day == 3 %}selected{% endif %}>{{ day }}</option>
+        {% endfor %}
+    </select>
+    <span>days.</span>
 </div>
 
 <!-- Desktop table -->
@@ -416,16 +430,18 @@ document.addEventListener("DOMContentLoaded", async function() {
     const searchBox = document.getElementById("search-box");
     const countSpan = document.getElementById("node-count");
     const statusSpan = document.getElementById("node-status");
+    const daysActiveFilter = document.getElementById("days-active-filter");
     const exportBtn = document.getElementById("export-btn");
     const clearBtn = document.getElementById("clear-btn");
     const favoritesBtn = document.getElementById("favorites-btn");
 
     let lastIsMobile = (window.innerWidth <= 768);
 
-    try {
+    async function loadNodesForActiveDays() {
+        const daysActive = Number(daysActiveFilter.value) || 3;
         setStatus("Loading nodes…");
         await nextFrame();
-        const res = await fetch("/api/nodes?days_active=3");
+        const res = await fetch(`/api/nodes?days_active=${encodeURIComponent(daysActive)}`);
         if (!res.ok) throw new Error("Failed to fetch nodes");
 
         const data = await res.json();
@@ -456,6 +472,10 @@ document.addEventListener("DOMContentLoaded", async function() {
         applyFilters(); // ensures initial sort + render uses same path
         updateSortIcons();
         setStatus("");
+    }
+
+    try {
+        await loadNodesForActiveDays();
     } catch (err) {
         tbody.innerHTML = `<tr>
             <td colspan="11" style="text-align:center; color:red;">
@@ -469,6 +489,20 @@ document.addEventListener("DOMContentLoaded", async function() {
     channelFilter.addEventListener("change", applyFilters);
     hwFilter.addEventListener("change", applyFilters);
     firmwareFilter.addEventListener("change", applyFilters);
+    daysActiveFilter.addEventListener("change", async () => {
+        try {
+            await loadNodesForActiveDays();
+        } catch (err) {
+            console.error("Failed to reload nodes:", err);
+            tbody.innerHTML = `<tr>
+                <td colspan="11" style="text-align:center; color:red;">
+                    ${nodelistTranslations.error_loading_nodes || "Error loading nodes"}
+                </td></tr>`;
+            mobileList.innerHTML = "";
+            countSpan.textContent = 0;
+            setStatus("");
+        }
+    });
 
     // Debounced only for search typing
     searchBox.addEventListener("input", debounce(applyFilters, 250));
@@ -535,12 +569,15 @@ document.addEventListener("DOMContentLoaded", async function() {
     }
 
     function fillSelect(select, values) {
+        const currentValue = select.value;
+        select.querySelectorAll("option:not(:first-child)").forEach(opt => opt.remove());
         [...values].sort().forEach(v => {
             const opt = document.createElement("option");
             opt.value = v;
             opt.textContent = v;
             select.appendChild(opt);
         });
+        select.value = values.has(currentValue) ? currentValue : "";
     }
 
     function toggleFavoritesFilter() {
