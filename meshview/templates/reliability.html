@@ -348,12 +348,13 @@
                         <tr>
                             <th>Gateway</th>
                             <th>Heard</th>
+                            <th>Avg Hops</th>
                             <th>Reliability</th>
                         </tr>
                     </thead>
                     <tbody id="reach-packet-body-left">
                         <tr>
-                            <td colspan="3" class="reach-muted">Loading packets...</td>
+                            <td colspan="4" class="reach-muted">Loading packets...</td>
                         </tr>
                     </tbody>
                 </table>
@@ -364,12 +365,13 @@
                         <tr>
                             <th>Gateway</th>
                             <th>Heard</th>
+                            <th>Avg Hops</th>
                             <th>Reliability</th>
                         </tr>
                     </thead>
                     <tbody id="reach-packet-body-right">
                         <tr>
-                            <td colspan="3" class="reach-muted">Loading packets...</td>
+                            <td colspan="4" class="reach-muted">Loading packets...</td>
                         </tr>
                     </tbody>
                 </table>
@@ -391,12 +393,13 @@
                         <th>Packet</th>
                         <th>Time</th>
                         <th>Type</th>
+                        <th>Hops</th>
                         <th>Status</th>
                     </tr>
                 </thead>
                 <tbody id="gateway-packet-body">
                     <tr>
-                        <td colspan="4" class="reach-muted">No packet selected.</td>
+                        <td colspan="5" class="reach-muted">No packet selected.</td>
                     </tr>
                 </tbody>
             </table>
@@ -464,6 +467,19 @@ function packetTypeTag(portnum) {
         </span>
         <span class="text-secondary">(${escapeHtml(portnum ?? "?")})</span>
     `;
+}
+
+function packetSeenHopCount(row) {
+    const hopStart = Number(row?.hop_start ?? 0);
+    const hopLimit = Number(row?.hop_limit ?? 0);
+    return Math.max(0, hopStart - hopLimit);
+}
+
+function formatAverageHopCount(value) {
+    if (value === null || value === undefined || !Number.isFinite(value)) return "—";
+
+    const lower = Math.floor(value);
+    return value - lower === 0.5 ? lower : Math.round(value);
 }
 
 function reliabilityBucketFor(row) {
@@ -545,7 +561,7 @@ function renderReliabilityMap(gatewayRows, nodesById) {
             icon: reachMapIcon(`${Math.round(row.percent)}%`, bucket.color),
         }).bindPopup(`
             <b>${nodeLink(row.nodeId, nodesById)}</b><br>
-            Reliability: ${row.percent.toFixed(1)}%<br>
+            Reliability: ${row.percent.toFixed(1)}% · Avg. hops ${formatAverageHopCount(row.avgHopCount)}<br>
             Heard:
             <button class="reach-heard-link" type="button" onclick="openGatewayPacketModal(${row.nodeId})">
                 ${row.heardCount}
@@ -587,6 +603,7 @@ function openGatewayPacketModal(nodeId) {
             <td><a href="/packet/${packet.id}">${packet.id}</a></td>
             <td>${escapeHtml(formatPacketTime(packet.import_time_us))}</td>
             <td>${packetTypeTag(packet.portnum)}</td>
+            <td>${packet.hopCount ?? "—"}</td>
             <td class="${statusClass}">${statusText}</td>
         </tr>
         `;
@@ -658,7 +675,7 @@ async function loadReachReport(nodeId = reachNodeId) {
     reliabilityGatewayDetails = new Map();
     nodeLinkEl.href = `/node/${encodeURIComponent(reachNodeId)}`;
     bucketBodyEl.innerHTML = '<tr><td colspan="2" class="reach-muted">Loading statistics...</td></tr>';
-    setGatewayTables('<tr><td colspan="3" class="reach-muted">Loading packets...</td></tr>');
+    setGatewayTables('<tr><td colspan="4" class="reach-muted">Loading packets...</td></tr>');
     resetReliabilityMap();
 
     try {
@@ -679,7 +696,7 @@ async function loadReachReport(nodeId = reachNodeId) {
         if (packets.length === 0) {
             gatewayCountEl.textContent = "0";
             bucketBodyEl.innerHTML = '<tr><td colspan="2" class="reach-muted">No packets found.</td></tr>';
-            setGatewayTables('<tr><td colspan="3" class="reach-muted">No packets found.</td></tr>');
+            setGatewayTables('<tr><td colspan="4" class="reach-muted">No packets found.</td></tr>');
             resetReliabilityMap();
             return;
         }
@@ -698,19 +715,27 @@ async function loadReachReport(nodeId = reachNodeId) {
         const gatewayStats = new Map();
         const reportResults = seenResults.filter(result => !isSkippedReliabilityPacket(result.packet));
         reportResults.forEach(result => {
-            const gatewaysForPacket = new Set(result.seen.map(row => Number(row.node_id)));
-            gatewaysForPacket.delete(reachNodeId);
-            gatewaysForPacket.forEach(nodeId => {
-                gatewayStats.set(nodeId, (gatewayStats.get(nodeId) || 0) + 1);
+            const seenByGateway = new Map();
+            result.seen.forEach(row => {
+                const nodeId = Number(row.node_id);
+                if (nodeId === reachNodeId || seenByGateway.has(nodeId)) return;
+                seenByGateway.set(nodeId, row);
+            });
+            seenByGateway.forEach((seenRow, nodeId) => {
+                const stats = gatewayStats.get(nodeId) || { heardCount: 0, hopTotal: 0 };
+                stats.heardCount += 1;
+                stats.hopTotal += packetSeenHopCount(seenRow);
+                gatewayStats.set(nodeId, stats);
             });
         });
 
         const gatewayRows = [...gatewayStats.entries()]
-            .map(([nodeId, heardCount]) => ({
+            .map(([nodeId, stats]) => ({
                 nodeId,
-                heardCount,
+                heardCount: stats.heardCount,
+                avgHopCount: stats.heardCount ? stats.hopTotal / stats.heardCount : null,
                 total: reportResults.length,
-                percent: reportResults.length ? (heardCount / reportResults.length) * 100 : 0,
+                percent: reportResults.length ? (stats.heardCount / reportResults.length) * 100 : 0,
             }))
             .sort((a, b) => b.percent - a.percent || b.heardCount - a.heardCount || a.nodeId - b.nodeId);
 
@@ -746,37 +771,42 @@ async function loadReachReport(nodeId = reachNodeId) {
                         </button>
                         <span class="text-secondary">(${reportResults.length})</span>
                     </td>
+                    <td>${formatAverageHopCount(row.avgHopCount)}</td>
                     <td>${row.percent.toFixed(1)}%</td>
                 </tr>
             `).join("")
-            : '<tr><td colspan="3" class="reach-muted">No gateways heard these packets.</td></tr>';
+            : '<tr><td colspan="4" class="reach-muted">No gateways heard these packets.</td></tr>';
         reliabilityGatewayDetails = new Map(gatewayRows.map(row => [
             Number(row.nodeId),
             {
                 label: gatewayLabel(row.nodeId, nodesById),
                 heardCount: row.heardCount,
                 total: reportResults.length,
-                packets: seenResults.map(result => ({
-                    id: result.packet.id,
-                    import_time_us: result.packet.import_time_us,
-                    portnum: result.packet.portnum,
-                    skipped: isSkippedReliabilityPacket(result.packet),
-                    heard: new Set(result.seen.map(seen => Number(seen.node_id))).has(Number(row.nodeId)),
-                })),
+                packets: seenResults.map(result => {
+                    const seenRow = result.seen.find(seen => Number(seen.node_id) === Number(row.nodeId));
+                    return {
+                        id: result.packet.id,
+                        import_time_us: result.packet.import_time_us,
+                        portnum: result.packet.portnum,
+                        skipped: isSkippedReliabilityPacket(result.packet),
+                        heard: Boolean(seenRow),
+                        hopCount: seenRow ? packetSeenHopCount(seenRow) : null,
+                    };
+                }),
             }
         ]));
         const splitIndex = Math.ceil(gatewayRows.length / 2);
         bodyEls[0].innerHTML = renderGatewayRows(gatewayRows.slice(0, splitIndex));
         bodyEls[1].innerHTML = gatewayRows.length > 1
             ? renderGatewayRows(gatewayRows.slice(splitIndex))
-            : '<tr><td colspan="3" class="reach-muted">No additional gateways.</td></tr>';
+            : '<tr><td colspan="4" class="reach-muted">No additional gateways.</td></tr>';
         renderReliabilityMap(gatewayRows, nodesById);
     } catch (err) {
         console.error("Failed to load reach report:", err);
         packetCountEl.textContent = "!";
         gatewayCountEl.textContent = "!";
         bucketBodyEl.innerHTML = '<tr><td colspan="2" class="text-danger">Failed to load statistics.</td></tr>';
-        setGatewayTables('<tr><td colspan="3" class="text-danger">Failed to load report.</td></tr>');
+        setGatewayTables('<tr><td colspan="4" class="text-danger">Failed to load report.</td></tr>');
         resetReliabilityMap();
     }
 }
@@ -794,9 +824,9 @@ document.addEventListener("DOMContentLoaded", async () => {
             document.getElementById("reach-bucket-body").innerHTML =
                 '<tr><td colspan="2" class="text-warning">Enter a valid node ID or select a node.</td></tr>';
             document.getElementById("reach-packet-body-left").innerHTML =
-                '<tr><td colspan="3" class="text-warning">Enter a valid node ID or select a node.</td></tr>';
+                '<tr><td colspan="4" class="text-warning">Enter a valid node ID or select a node.</td></tr>';
             document.getElementById("reach-packet-body-right").innerHTML =
-                '<tr><td colspan="3" class="text-warning">Enter a valid node ID or select a node.</td></tr>';
+                '<tr><td colspan="4" class="text-warning">Enter a valid node ID or select a node.</td></tr>';
             return;
         }
 
