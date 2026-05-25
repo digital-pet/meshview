@@ -214,16 +214,6 @@ async def daily_cleanup_at(
                     cleanup_logger.info(f"Deleted {result.rowcount} rows from Traceroute")
 
                     # -------------------------
-                    # NodePublicKey
-                    # -------------------------
-                    result = await session.execute(
-                        delete(models.NodePublicKey).where(
-                            models.NodePublicKey.last_seen_us < cutoff_us
-                        )
-                    )
-                    cleanup_logger.info(f"Deleted {result.rowcount} rows from NodePublicKey")
-
-                    # -------------------------
                     # Node
                     # -------------------------
                     result = await session.execute(
