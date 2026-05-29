@@ -13,7 +13,7 @@ from meshtastic.protobuf.portnums_pb2 import PortNum
 from meshview import database, decode_payload, store
 from meshview.__version__ import __version__, _git_revision_short, get_version_info
 from meshview.config import CONFIG
-from meshview.models import DailySnapshot, Node, NodePublicKey
+from meshview.models import DailySnapshot, Node
 from meshview.models import Packet as PacketModel
 from meshview.models import PacketSeen as PacketSeenModel
 from meshview.radio.coverage import (
@@ -1041,6 +1041,7 @@ async def api_node_qr(request):
 
     try:
         from meshtastic.protobuf.admin_pb2 import SharedContact
+        from meshtastic.protobuf.config_pb2 import Config
         from meshtastic.protobuf.mesh_pb2 import User
 
         user = User()
@@ -1056,6 +1057,13 @@ async def api_node_qr(request):
                 hw_model_value = getattr(HardwareModel, node.hw_model.upper(), None)
                 if hw_model_value is not None:
                     user.hw_model = hw_model_value
+            except (AttributeError, TypeError):
+                pass
+        if node.role:
+            try:
+                role_value = getattr(Config.DeviceConfig.Role, node.role.upper(), None)
+                if role_value is not None:
+                    user.role = role_value
             except (AttributeError, TypeError):
                 pass
 
@@ -1077,6 +1085,7 @@ async def api_node_qr(request):
                 "node_id": node_id,
                 "long_name": node.long_name,
                 "short_name": node.short_name,
+                "role": node.role,
                 "meshtastic_url": meshtastic_url,
             }
         )
@@ -1086,44 +1095,6 @@ async def api_node_qr(request):
         logger.error(f"Error generating QR URL for node {node_id}: {e}")
         logger.error(traceback.format_exc())
         return web.json_response({"error": f"Failed to generate URL: {str(e)}"}, status=500)
-
-
-@routes.get("/api/node/{node_id}/impersonation-check")
-async def api_node_impersonation_check(request):
-    """
-    Check if a node has multiple different public keys, which could indicate impersonation.
-    """
-    try:
-        node_id_str = request.match_info["node_id"]
-        node_id = int(node_id_str, 0)
-    except (KeyError, ValueError):
-        return web.json_response({"error": "Invalid node_id"}, status=400)
-
-    try:
-        async with database.async_session() as session:
-            result = await session.execute(
-                select(NodePublicKey.public_key).where(NodePublicKey.node_id == node_id).distinct()
-            )
-            public_keys = result.scalars().all()
-
-            unique_key_count = len(public_keys)
-
-            return web.json_response(
-                {
-                    "node_id": node_id,
-                    "unique_public_key_count": unique_key_count,
-                    "potential_impersonation": unique_key_count > 1,
-                    "public_keys": public_keys
-                    if unique_key_count <= 3
-                    else public_keys[:3] + ["..."],
-                    "warning": "Multiple different public keys detected. This node may be getting impersonated."
-                    if unique_key_count > 1
-                    else None,
-                }
-            )
-    except Exception as e:
-        logger.error(f"Error checking impersonation for node {node_id}: {e}")
-        return web.json_response({"error": "Failed to check impersonation"}, status=500)
 
 
 @routes.get("/api/coverage/{node_id}")

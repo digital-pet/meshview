@@ -296,32 +296,6 @@
     color:#fff;
 }
 
-/* --- Impersonation Warning --- */
-.impersonation-warning {
-    background: rgba(239, 68, 68, 0.15);
-    border: 1px solid rgba(239, 68, 68, 0.4);
-    border-radius: 8px;
-    padding: 12px 16px;
-    margin-bottom: 14px;
-    display: flex;
-    align-items: flex-start;
-    gap: 10px;
-}
-.impersonation-warning .warning-icon {
-    font-size: 1.2rem;
-}
-.impersonation-warning .warning-content {
-    flex: 1;
-}
-.impersonation-warning .warning-title {
-    color: #f87171;
-    font-weight: bold;
-    margin-bottom: 4px;
-}
-.impersonation-warning .warning-text {
-    font-size: 0.85rem;
-    color: #ccc;
-}
 {% endblock %}
 
 {% block body %}
@@ -340,21 +314,15 @@
         <button onclick="showQrCode()" id="showQrBtn">
             <span>🔳</span> <span data-translate-lang="show_qr_code">Show QR Code</span>
         </button>
+        <button onclick="openReachReport()" id="reachReportBtn">
+            <span>📈</span> <span>Reliability</span>
+        </button>
         <button onclick="toggleCoverage()" id="toggleCoverageBtn" disabled title="Location required for coverage">
             <span>📡</span> <span data-translate-lang="toggle_coverage">Predicted Coverage</span>
         </button>
         <a class="inline-link" id="coverageHelpLink" href="/docs/COVERAGE.md" target="_blank" rel="noopener" data-translate-lang="coverage_help">
             Coverage Help
         </a>
-    </div>
-
-    <!-- Impersonation Warning -->
-    <div id="impersonationWarning" class="impersonation-warning" style="display:none;">
-        <span class="warning-icon">⚠️</span>
-        <div class="warning-content">
-            <div class="warning-title" data-translate-lang="potential_impersonation">Potential Impersonation Detected</div>
-            <div class="warning-text" id="impersonationText"></div>
-        </div>
     </div>
 
     <!-- Node Info -->
@@ -824,6 +792,11 @@ function initMap(){
     map = L.map('map', { preferCanvas:true }).setView([37.7749, -122.4194], 8);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution:'&copy; OpenStreetMap'
+    }).addTo(map);
+    L.control.scale({
+        position: 'bottomleft',
+        metric: true,
+        imperial: true
     }).addTo(map);
 }
 
@@ -1629,8 +1602,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     requestAnimationFrame(async () => {
         await loadNodeInfo();
 
-        // Load QR code URL and impersonation check
-        await loadNodeQrAndImpersonation();
+        await loadNodeQr();
 
         // ✅ MAP MUST EXIST FIRST
         if (!map) initMap();
@@ -1766,16 +1738,11 @@ async function loadNodeStats(nodeId) {
 
 let currentMeshtasticUrl = "";
 
-async function loadNodeQrAndImpersonation() {
+async function loadNodeQr() {
     const actionsDiv = document.getElementById("nodeActions");
-    const warningDiv = document.getElementById("impersonationWarning");
 
     try {
-        const [qrRes, impRes] = await Promise.all([
-            fetch(`/api/node/${fromNodeId}/qr`),
-            fetch(`/api/node/${fromNodeId}/impersonation-check`)
-        ]);
-
+        const qrRes = await fetch(`/api/node/${fromNodeId}/qr`);
         const qrData = await qrRes.json();
         if (qrRes.ok && qrData.meshtastic_url) {
             currentMeshtasticUrl = qrData.meshtastic_url;
@@ -1783,19 +1750,9 @@ async function loadNodeQrAndImpersonation() {
         } else {
             actionsDiv.style.display = "none";
         }
-
-        const impData = await impRes.json();
-        if (impRes.ok && impData.potential_impersonation) {
-            warningDiv.style.display = "flex";
-            document.getElementById("impersonationText").textContent =
-                impData.warning || `This node has sent ${impData.unique_public_key_count} different public keys. This could indicate impersonation.`;
-        } else {
-            warningDiv.style.display = "none";
-        }
     } catch (err) {
-        console.error("Failed to load QR/impersonation data:", err);
+        console.error("Failed to load QR data:", err);
         actionsDiv.style.display = "none";
-        warningDiv.style.display = "none";
     }
 }
 
@@ -1828,6 +1785,11 @@ function showQrCode() {
     generateQrCode(currentMeshtasticUrl);
 
     document.getElementById("qrModal").style.display = "flex";
+}
+
+function openReachReport() {
+    if (!fromNodeId) return;
+    window.location.href = `/reliability?node_id=${encodeURIComponent(fromNodeId)}`;
 }
 
 function closeQrModal() {

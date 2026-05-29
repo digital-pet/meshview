@@ -4,6 +4,14 @@
 
 The project serves as a real-time monitoring and diagnostic tool for the Meshtastic mesh network. It provides detailed insights into network activity, including message traffic, node positions, and telemetry data.
 
+### Version 3.0.7 — May 2026
+- Reliability report: added a dedicated reliability page for checking how well a selected node is heard across the mesh, including heard/missed status, packet counts, hop counts, gateway tables, and a map view.
+- Node list/map UX: added node list filtering for wider active-node ranges, included all database nodes where appropriate, and made map node colors persistent across reboots.
+- QR/API fixes: corrected QR code generation when a node role is missing or unavailable.
+- Database cleanup: removed stored node public key data and added the Alembic migration to drop `node.public_key`.
+- Protobufs: refreshed vendored Meshtastic protobuf Python modules to upstream commit `9ab4a1d08cb833d897aee2367013318718391f2f`, including new hardware models such as `RAK6421`.
+- Tooling: improved the protobuf updater so it supports raw commit SHAs, the newer upstream `meshtastic/*.proto` layout, generated `.pyi` stubs, and the vendored `nanopb`/`serial_hal` outputs.
+
 ### Version 3.0.6 — March 2026
 - Daily snapshots: added the `daily_snapshot` table, scheduled snapshot capture, and `/api/snapshots/daily` for historical node, packet, and gateway counts.
 - Stats/UI: expanded stats views with snapshot data and added channel filters to Chat and Firehose.
@@ -11,7 +19,6 @@ The project serves as a real-time monitoring and diagnostic tool for the Meshtas
 - Ingestion/API reliability: improved duplicate `PacketSeen` handling, guarded invalid node info packets, and made traceroute/edge APIs more tolerant of decode failures.
 - Language support: added Russian translations.
 
-  
 ### Version 3.0.5 — February 2026
 - **IMPORTANT:** the predicted coverage feature requires the extra `pyitm` dependency. If it is not installed, the coverage API will return 503.
   - Ubuntu install (inside the venv): `./env/bin/pip install pyitm`
