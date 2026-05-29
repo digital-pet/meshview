@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import re
 import shutil
 import subprocess
 import sys
@@ -9,6 +10,39 @@ from pathlib import Path
 
 def run(cmd, cwd=None):
     subprocess.run(cmd, cwd=cwd, check=True)
+
+
+def clone_ref(repo, ref, tmp_path):
+    if re.fullmatch(r"[0-9a-fA-F]{40}", ref):
+        run(["git", "clone", "--no-checkout", "--depth", "1", repo, str(tmp_path)])
+        run(["git", "fetch", "--depth", "1", "origin", ref], cwd=tmp_path)
+        run(["git", "checkout", "--detach", "FETCH_HEAD"], cwd=tmp_path)
+        return
+
+    run(["git", "clone", "--depth", "1", "--branch", ref, repo, str(tmp_path)])
+
+
+def stage_meshtastic_package(proto_root, tmp_path):
+    """Map upstream meshtastic/*.proto files to Meshview's vendored package path."""
+    if proto_root != tmp_path / "meshtastic":
+        return tmp_path, proto_root
+
+    stage_root = tmp_path / "_meshview_proto_stage"
+    staged_proto_root = stage_root / "meshtastic" / "protobuf"
+    staged_proto_root.mkdir(parents=True, exist_ok=True)
+
+    for proto in sorted(proto_root.glob("*.proto")):
+        text = proto.read_text(encoding="utf-8")
+        text = text.replace('import "meshtastic/', 'import "meshtastic/protobuf/')
+        text = text.replace('import "nanopb.proto"', 'import "meshtastic/protobuf/nanopb.proto"')
+        text = text.replace("package meshtastic;", "package meshtastic.protobuf;")
+        (staged_proto_root / proto.name).write_text(text, encoding="utf-8")
+
+    nanopb = tmp_path / "nanopb.proto"
+    if nanopb.exists():
+        shutil.copy2(nanopb, staged_proto_root / "nanopb.proto")
+
+    return stage_root, staged_proto_root
 
 
 def main():
@@ -36,7 +70,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix="meshtastic-protobufs-") as tmp:
         tmp_path = Path(tmp)
         print(f"Cloning {args.repo} ({args.ref}) into {tmp_path}...")
-        run(["git", "clone", "--depth", "1", "--branch", args.ref, args.repo, str(tmp_path)])
+        clone_ref(args.repo, args.ref, tmp_path)
         upstream_rev = (
             subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=tmp_path).decode().strip()
         )
@@ -57,6 +91,7 @@ def main():
         # Common locations in the meshtastic/protobufs repo
         candidates = [
             tmp_path / "meshtastic" / "protobuf",
+            tmp_path / "meshtastic",
             tmp_path / "protobufs",
             tmp_path / "protobuf",
             tmp_path / "proto",
@@ -81,14 +116,17 @@ def main():
             print(f"No .proto files found in {proto_root}", file=sys.stderr)
             return 1
 
-        rel_protos = [str(p.relative_to(tmp_path)) for p in protos]
+        proto_base, proto_root = stage_meshtastic_package(proto_root, tmp_path)
+        protos = sorted(proto_root.glob("*.proto"))
+        rel_protos = [str(p.relative_to(proto_base)) for p in protos]
 
         protoc = shutil.which("protoc")
         if protoc:
             cmd = [
                 protoc,
-                f"-I{tmp_path}",
+                f"-I{proto_base}",
                 f"--python_out={out_root}",
+                f"--pyi_out={out_root}",
                 *rel_protos,
             ]
             print("Running protoc...")
@@ -107,8 +145,9 @@ def main():
                 sys.executable,
                 "-m",
                 "grpc_tools.protoc",
-                f"-I{tmp_path}",
+                f"-I{proto_base}",
                 f"--python_out={out_root}",
+                f"--pyi_out={out_root}",
                 *rel_protos,
             ]
             print("Running grpc_tools.protoc...")
