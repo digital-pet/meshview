@@ -109,7 +109,8 @@ async def process_envelope(topic, env):
                     node.short_name = map_report.short_name
                     node.hw_model = hw_model
                     node.role = role
-                    node.channel = env.channel_id
+                    if not node.channel:
+                        node.channel = env.channel_id
                     node.last_lat = map_report.latitude_i
                     node.last_long = map_report.longitude_i
                     node.firmware = map_report.firmware_version
